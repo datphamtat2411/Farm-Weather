@@ -179,6 +179,7 @@ def run(url, ca, mqtt_port, audit):
                         deny(lambda:call(name,"rpc",body))
                 deny(lambda:call(name,"rpc",{"method":"start_pump","params":{}}))
                 deny(lambda:call(name,"rpc",req,target=other_id))
+                deny(lambda:call(name,"history",{"startTs":stamp-1000,"endTs":stamp+1000},target=other_id))
                 checked("actual HTTPS business matrix: "+name)
             assert admin.request("GET","/api/alarm/"+alarm_id)["acknowledged"]
             assert not admin.request("GET","/api/alarm/"+alarm_id)["cleared"]

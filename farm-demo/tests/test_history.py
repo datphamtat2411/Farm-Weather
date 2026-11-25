@@ -64,6 +64,15 @@ class HistoryTest(unittest.TestCase):
         self.assertEqual(e["summary"]["coverage_pct"],0)
         self.assertIsNone(e["summary"]["metrics"]["rainfall"]["total"])
 
+    def test_bucket_cannot_reintroduce_overlap_rejected_by_range(self):
+        self.add(64,1,900,rainfall=3)
+        self.add(67,2,300,rainfall=99)
+        r=report(records(self.points,self.start,self.start+2*HOUR),self.start,self.start+2*HOUR)
+        self.assertEqual(r["summary"]["metrics"]["rainfall"]["total"],3)
+        self.assertEqual(r["summary"]["overlapping_periods"],1)
+        self.assertIsNone(r["buckets"][1]["metrics"]["rainfall"]["total"])
+        self.assertEqual(r["buckets"][1]["boundary_periods"],1)
+
     def test_conflicting_record_fails(self):
         self.add(5,1)
         self.add(10,1)
@@ -72,14 +81,13 @@ class HistoryTest(unittest.TestCase):
 
     def test_month_is_chunked_and_local_day_aligned(self):
         calls=[]
-        outer=self
         class Api:
             def request(self,method,path,**kw):
                 calls.append(kw)
                 return {"record_id":[{"ts":kw["endTs"]-1,"value":"FARM_WS_01:1"}]}
         result=fetch_points(Api(),"station",self.start,self.start+30*DAY)
-        self.assertEqual(len(calls),30)
-        self.assertEqual(len(result["record_id"]),30)
+        self.assertEqual(len(calls),5)
+        self.assertEqual(len(result["record_id"]),5)
         r=report([],self.start+HOUR,self.start+7*DAY)
         self.assertEqual(r["bucket_s"],86400)
         self.assertEqual(r["buckets"][0]["endTs"],self.start+DAY)

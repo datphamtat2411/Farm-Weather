@@ -94,7 +94,7 @@ self.onInit = function () {
   const hf=el('history-form'), hr=hf.elements;
   const hfields=fields.filter(f=>f[0]!=='wind_direction').concat([fields.find(f=>f[0]==='wind_direction')]);
   const localInput=ms=>new Date(ms+7*3600000).toISOString().slice(0,16);
-  function parseLocal(v){return Date.parse(v+':00+07:00');}
+  function parseLocal(v){return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)?Date.parse(v+':00+07:00'):NaN;}
   function preset(){if(hr.range.value==='custom')return;const end=Math.floor(Date.now()/60000)*60000;hr.end.value=localInput(end);hr.start.value=localInput(end-Number(hr.range.value)*86400000);}
   function historyReset(message){historyGeneration++;historyResult=null;historyRange=null;el('history-results').hidden=true;el('export').hidden=true;text('history-message',message||'');}
   function table(id,headers,rows){const t=el(id),head=node('thead'),body=node('tbody'),tr=node('tr');for(const h of headers)tr.append(node('th',h));head.append(tr);for(const row of rows){const r=node('tr');for(const v of row)r.append(node('td',v));body.append(r);}t.replaceChildren(head,body);}
@@ -132,7 +132,10 @@ self.onInit = function () {
     for(const [k,label,unit,dec] of hfields)historyChart(target,label,unit,r.buckets,k,k==='rainfall'?'total':k==='wind_gust'?'max':k==='wind_direction'?'vector_deg':k==='battery_voltage'?'last':'avg',dec);
     text('history-bucket',(r.bucket_s===3600?'Theo giờ':'Theo ngày')+' · xanh: đủ kỳ hợp lệ; vàng: thiếu một phần; khoảng trống: không có dữ liệu.');
     table('history-stats',['Thông số','Min','Max','Trung bình / tổng / hướng','Cuối kỳ','Độ phủ hợp lệ'],hfields.map(([k,label,unit,d])=>{const a=m[k];return [label+' ('+unit+')',num(a.min,d),num(a.max,d),num(k==='rainfall'?a.total:k==='wind_direction'?a.vector_deg:a.avg,d),num(a.last,d),num(a.coverage_pct,1)+'%'];}));
-    text('history-gaps',s.gaps.length+' khoảng thiếu · '+s.boundary_periods+' kỳ cắt ranh giới · '+s.overlapping_periods+' kỳ chồng lấn bị loại. '+s.gaps.slice(0,5).map(g=>time(g.startTs)+' → '+time(g.endTs)).join(' | ')+(s.gaps.length>5?' …':''));
+    text('history-gaps',s.gaps.length+' khoảng thiếu · '+s.boundary_periods+' kỳ cắt ranh giới truy vấn · '+s.overlapping_periods+' kỳ chồng lấn bị loại · '+r.buckets.reduce((n,b)=>n+b.boundary_periods,0)+' kỳ không thể phân bổ vào giờ/ngày.');
+    const details=el('history-gap-list');details.replaceChildren();
+    if(s.gaps.length){details.append(node('summary','Xem các khoảng thiếu ('+s.gaps.length+')'));const list=node('ul');for(const g of s.gaps)list.append(node('li',time(g.startTs)+' → '+time(g.endTs)));details.append(list);}
+    details.hidden=!s.gaps.length;
     rawPage();el('history-results').hidden=false;el('export').hidden=!snapshot||!snapshot.capabilities.includes('export');
   }
   async function loadHistory(){const start=parseLocal(hr.start.value),end=parseLocal(hr.end.value);

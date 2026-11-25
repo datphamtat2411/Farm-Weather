@@ -12,17 +12,17 @@ META = ("record_id", "sequence_number", "period_s", "valid_mask", "status")
 HISTORY_KEYS = ",".join(META + KEYS)
 
 def fetch_points(api, station, start, end):
-    """Bound requests by day, avoiding silent truncation of a month of raw data."""
+    """Bound requests by seven days (2016 regular five-minute records)."""
     path = f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries"
     points = {}
-    for left in range(start, end, DAY):
-        right = min(left+DAY, end)
+    for left in range(start, end, 7*DAY):
+        right = min(left+7*DAY, end)
         page = api.request("GET", path, keys=HISTORY_KEYS, startTs=max(0,left-1),
-                           endTs=right+1, agg="NONE", limit=1000)
+                           endTs=right+1, agg="NONE", limit=2500)
         for key, entries in page.items():
             if key not in META + KEYS:
                 continue
-            if len(entries) >= 1000:
+            if len(entries) >= 2500:
                 raise ValueError("history query limit reached")
             points.setdefault(key, []).extend(p for p in entries if left < p["ts"] <= right)
     return points
@@ -67,8 +67,8 @@ def records(points, start, end):
                      "valid_mask":mask,"status":integer(raw.get("status")),"values":vals})
     return rows
 
-def aggregate(rows, start, end):
-    """Only complete, non-overlapping periods contribute; partial periods are flagged."""
+def select_periods(rows, start, end):
+    """Choose complete, non-overlapping periods in timestamp order."""
     accepted, boundary, overlap = [], 0, 0
     last_end = start
     for row in rows:
@@ -84,6 +84,10 @@ def aggregate(rows, start, end):
             continue
         accepted.append(row)
         last_end = ts
+    return accepted, boundary, overlap
+
+def aggregate(rows, start, end):
+    accepted, boundary, overlap = select_periods(rows, start, end)
     duration = (end-start)/1000
     stats = {}
     for key in KEYS:
@@ -127,9 +131,10 @@ def report(rows, start, end):
     offset=7*HOUR
     cursor=start
     buckets=[]
+    accepted, _, _ = select_periods(rows, start, end)
     while cursor<end:
         right=min(end,((cursor+offset)//step+1)*step-offset)
-        bucket=aggregate(rows,cursor,right)
+        bucket=aggregate(accepted,cursor,right)
         buckets.append({"startTs":cursor,"endTs":right,**bucket})
         cursor=right
     return {"startTs":start,"endTs":end,"bucket_s":step//1000,"timezone":"Asia/Ho_Chi_Minh",
