@@ -16,7 +16,8 @@
       "top": -140,
       "left": 180,
       "attrs": {
-        "value": "384"
+        "value": "384",
+        "label": "Wind vane ADC (8 positions)"
       }
     },
     {
@@ -25,43 +26,8 @@
       "top": -140,
       "left": 280,
       "attrs": {
-        "value": "568"
-      }
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "temperature",
-      "top": -140,
-      "left": 380,
-      "attrs": {
-        "value": "500"
-      }
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "humidity",
-      "top": -40,
-      "left": 180,
-      "attrs": {
-        "value": "700"
-      }
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "pressure",
-      "top": -40,
-      "left": 280,
-      "attrs": {
-        "value": "550"
-      }
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "wind",
-      "top": -40,
-      "left": 380,
-      "attrs": {
-        "value": "200"
+        "value": "568",
+        "label": "Battery voltage model"
       }
     },
     {
@@ -82,7 +48,7 @@
       "left": 350,
       "attrs": {
         "color": "red",
-        "label": "Alarm"
+        "label": "Buzzer output (logic)"
       }
     },
     {
@@ -92,7 +58,7 @@
       "left": 450,
       "attrs": {
         "color": "yellow",
-        "label": "Stop irrigation"
+        "label": "Isolated relay request (logic)"
       }
     },
     {
@@ -111,6 +77,26 @@
       "left": 450,
       "attrs": {
         "value": "330"
+      }
+    },
+    {
+      "type": "chip-bme280",
+      "id": "ambient",
+      "top": -155,
+      "left": 310,
+      "attrs": {
+        "temperature": "29.5",
+        "humidity": "78",
+        "pressure": "1008.4"
+      }
+    },
+    {
+      "type": "chip-wind",
+      "id": "wind",
+      "top": -30,
+      "left": 310,
+      "attrs": {
+        "frequency": "6"
       }
     }
   ],
@@ -147,78 +133,6 @@
     ],
     [
       "battery:GND",
-      "mcu:GND.1",
-      "black",
-      []
-    ],
-    [
-      "temperature:SIG",
-      "mcu:A2",
-      "green",
-      []
-    ],
-    [
-      "temperature:VCC",
-      "mcu:3V3.1",
-      "red",
-      []
-    ],
-    [
-      "temperature:GND",
-      "mcu:GND.1",
-      "black",
-      []
-    ],
-    [
-      "humidity:SIG",
-      "mcu:A3",
-      "green",
-      []
-    ],
-    [
-      "humidity:VCC",
-      "mcu:3V3.1",
-      "red",
-      []
-    ],
-    [
-      "humidity:GND",
-      "mcu:GND.1",
-      "black",
-      []
-    ],
-    [
-      "pressure:SIG",
-      "mcu:A4",
-      "green",
-      []
-    ],
-    [
-      "pressure:VCC",
-      "mcu:3V3.1",
-      "red",
-      []
-    ],
-    [
-      "pressure:GND",
-      "mcu:GND.1",
-      "black",
-      []
-    ],
-    [
-      "wind:SIG",
-      "mcu:A5",
-      "green",
-      []
-    ],
-    [
-      "wind:VCC",
-      "mcu:3V3.1",
-      "red",
-      []
-    ],
-    [
-      "wind:GND",
       "mcu:GND.1",
       "black",
       []
@@ -280,6 +194,48 @@
     [
       "mcu:A10",
       "$serialMonitor:TX",
+      "green",
+      []
+    ],
+    [
+      "ambient:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "ambient:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ambient:SCL",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "ambient:SDA",
+      "mcu:B7",
+      "green",
+      []
+    ],
+    [
+      "wind:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "wind:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "wind:PULSE",
+      "mcu:B0",
       "green",
       []
     ]

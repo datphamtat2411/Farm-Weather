@@ -1,11 +1,31 @@
-name: Weather station foundation smoke
+name: Weather station hardware and foundation smoke
 version: 1
 steps:
   - wait-serial: 'READY FARM_WS_01 SIMULATION'
   - set-control:
       part-id: wind
+      name: frequency
+      value: 3
+  - set-control:
+      part-id: ambient
+      name: temperature
+      value: 27.5
+  - set-control:
+      part-id: ambient
+      name: humidity
+      value: 65
+  - set-control:
+      part-id: ambient
+      name: pressure
+      value: 1012
+  - set-control:
+      part-id: direction
       name: position
-      value: 0.1
+      value: 0.375
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.7
   - delay: 500ms
   - expect-pin:
       part-id: mcu
@@ -17,8 +37,8 @@ steps:
       value: 0
   - set-control:
       part-id: wind
-      name: position
-      value: 0.9
+      name: frequency
+      value: 27
   - wait-serial: 'WIND_ALARM_ON'
   - delay: 150ms
   - expect-pin:
@@ -41,8 +61,8 @@ steps:
       value: 0
   - set-control:
       part-id: wind
-      name: position
-      value: 0.1
+      name: frequency
+      value: 3
   - wait-serial: 'WIND_ALARM_OFF'
   - delay: 150ms
   - expect-pin:

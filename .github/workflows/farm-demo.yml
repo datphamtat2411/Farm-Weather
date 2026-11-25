@@ -110,6 +110,12 @@ jobs:
           chmod +x "$RUNNER_TEMP/wokwi-cli"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/wokwi-cli" --version > farm-demo/evidence/toolchain.txt
+      - name: Compile custom sensor models
+        working-directory: farm-demo/firmware
+        run: |
+          wokwi-cli chip compile chips/bme280.chip.c -o chips/bme280.chip.wasm
+          wokwi-cli chip compile chips/wind.chip.c -o chips/wind.chip.wasm
+          sha256sum chips/*.wasm > ../evidence/chips-sha256.txt
       - name: Lint Wokwi diagram
         working-directory: farm-demo/firmware
         run: wokwi-cli lint 2>&1 | tee ../evidence/diagram-lint.log
@@ -126,6 +132,8 @@ jobs:
       - name: Verify telemetry and persistent SQLite idempotency
         run: |
           python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json
+      - name: Verify hardware sensor values and actuator smoke
+        run: python farm-demo/tests/verify_hardware.py farm-demo/evidence/smoke.json | tee farm-demo/evidence/hardware.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
@@ -134,7 +142,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
   acceptance:
-    name: Task 01 acceptance
+    name: Farm demo acceptance
     needs: [native, firmware, simulation]
     if: always()
     runs-on: ubuntu-24.04
@@ -148,7 +156,7 @@ jobs:
         run: |
           printf 'Native: %s\nFirmware targets: %s\nSimulation: %s\n' "$NATIVE" "$FIRMWARE" "$SIMULATION" | tee -a "$GITHUB_STEP_SUMMARY"
           if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$SIMULATION" != success ]]; then
-            echo "::error::Mandatory Task 01 job failed, was cancelled, or was skipped."
+            echo "::error::Mandatory farm demo job failed, was cancelled, or was skipped."
             exit 1
           fi
-          echo 'All mandatory Task 01 demo checks passed. Review the separate license provenance check too.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'All mandatory farm demo checks passed. Review the separate license provenance check too.' >> "$GITHUB_STEP_SUMMARY"

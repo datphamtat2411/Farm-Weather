@@ -1,0 +1,19 @@
+{
+  "name": "SEN-15901 anemometer",
+  "author": "Farm Weather",
+  "pins": [
+    "VCC",
+    "GND",
+    "PULSE"
+  ],
+  "controls": [
+    {
+      "id": "frequency",
+      "label": "Wind contact pulses / logical second (1 Hz = 2.4 km/h)",
+      "type": "range",
+      "min": 0,
+      "max": 30,
+      "step": 1
+    }
+  ]
+}
