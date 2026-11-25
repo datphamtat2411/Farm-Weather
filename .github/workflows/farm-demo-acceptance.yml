@@ -14,7 +14,8 @@ permissions:
   contents: read
 concurrency:
   group: farm-demo-hardware-acceptance
-  cancel-in-progress: false
+  # A newer explicit candidate supersedes an obsolete SHA before consuming quota.
+  cancel-in-progress: true
 defaults:
   run:
     shell: bash

@@ -28,3 +28,5 @@ native-evidence, firmware-bluepill_f103c8, firmware-nucleo_l476rg, wokwi-preflig
 Số lần gọi remote của push phát triển: 0. Một đợt nghiệm thu đầy đủ hiện tại: 6 scenario (weather, invalid-ambient, local-alarms, power, link-recovery, remote-control). Số phút tính quota thực tế phụ thuộc Wokwi, chưa thể cam kết đủ quota cho Task 17; dự trù thêm các bài kiểm thử Task 06–16 và lần sửa lỗi. Không giảm tốc độ xác nhận hoặc thời gian cửa sổ nghiệp vụ chỉ để tiết kiệm phút.
 
 Task 17: replay and product_gate are mandatory; see [handover](task-17-handover.md). The gate validates same-SHA artifacts, latest attempts, actual reports and browser evidence before generating the handover manifest.
+
+Một yêu cầu nghiệm thu mới có chủ đích sẽ hủy run ứng viên cũ đang chạy để tránh tiêu hao Wokwi quota cho SHA lỗi thời. Push phát triển thông thường không hủy acceptance. Không coi run bị hủy là PASS; chỉ gate của SHA mới có giá trị.
