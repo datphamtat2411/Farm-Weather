@@ -116,13 +116,13 @@
   "connections": [
     [
       "direction:SIG",
-      "mcu:PA0",
+      "mcu:A0",
       "green",
       []
     ],
     [
       "direction:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
@@ -134,13 +134,13 @@
     ],
     [
       "battery:SIG",
-      "mcu:PA1",
+      "mcu:A1",
       "green",
       []
     ],
     [
       "battery:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
@@ -152,13 +152,13 @@
     ],
     [
       "temperature:SIG",
-      "mcu:PA2",
+      "mcu:A2",
       "green",
       []
     ],
     [
       "temperature:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
@@ -170,13 +170,13 @@
     ],
     [
       "humidity:SIG",
-      "mcu:PA3",
+      "mcu:A3",
       "green",
       []
     ],
     [
       "humidity:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
@@ -188,13 +188,13 @@
     ],
     [
       "pressure:SIG",
-      "mcu:PA4",
+      "mcu:A4",
       "green",
       []
     ],
     [
       "pressure:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
@@ -206,13 +206,13 @@
     ],
     [
       "wind:SIG",
-      "mcu:PA5",
+      "mcu:A5",
       "green",
       []
     ],
     [
       "wind:VCC",
-      "mcu:3.3V",
+      "mcu:3V3.1",
       "red",
       []
     ],
