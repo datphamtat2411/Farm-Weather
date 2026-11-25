@@ -17,7 +17,7 @@ def now_ms():
 def canonical(record):
     return json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
-def connect(path):
+def connect(path, *, recover=True):
     db = sqlite3.connect(path, timeout=5)
     db.execute("PRAGMA busy_timeout=5000")
     db.execute("PRAGMA journal_mode=WAL")
@@ -57,7 +57,8 @@ def connect(path):
         db.execute("""CREATE TABLE IF NOT EXISTS edge_health (
             id INTEGER PRIMARY KEY CHECK(id=1), near_full INTEGER NOT NULL DEFAULT 0)""")
         db.execute("INSERT OR IGNORE INTO edge_health(id) VALUES(1)")
-        db.execute("UPDATE weather_outbox SET state='PENDING' WHERE state='IN_FLIGHT'")
+        if recover:
+            db.execute("UPDATE weather_outbox SET state='PENDING' WHERE state='IN_FLIGHT'")
     return db
 
 def disk_bytes(db):

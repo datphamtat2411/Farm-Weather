@@ -4,7 +4,7 @@ MVP cho báo cáo trạm thời tiết mini. Mã nguồn tách khỏi ThingsBoar
 - firmware: STM32F103C8 (Blue Pill) là target mô phỏng Wokwi, không phải STM32L476RG của thiết kế thực tế.
 - BME280 custom chip mô phỏng thanh ghi I²C địa chỉ 0x76, đọc qua driver thanh ghi với I²C open-drain có timeout, ở forced mode. Anemometer custom chip tạo xung cạnh xuống thật tại PB0. Biến trở mô phỏng ADC hướng gió và điện áp pin. Nút nhấn mô phỏng gầu mưa. Hai LED thể hiện tín hiệu còi/relay yêu cầu ngừng tưới, không điều khiển tải thật.
 - Một giây logic = 100 ms mô phỏng. Cửa sổ, chu kỳ và ngưỡng giữ theo Chương 3–6. Timestamp cố định + thời gian logic là dữ liệu thử nghiệm.
-- edge: dịch vụ nhận MQTT ChirpStack-shaped, giải mã Protobuf, SQLite WAL/FULL và ACK FPort 20 sau commit. Mô phỏng radio qua adapter serial; chưa đồng bộ Cloud (Task 09).
+- edge: dịch vụ nhận MQTT ChirpStack-shaped, giải mã Protobuf, SQLite WAL/FULL và ACK FPort 20 sau commit. Mô phỏng radio qua adapter serial; đồng bộ MQTT/REST với xác minh lịch sử (Task 09, test Cloud; PE thực ở Task 10).
 - Chưa xác minh Stop 2, mức dòng điện, cảm biến BME280 thật hoặc an toàn điện bằng Wokwi.
 - Development CI: native test, build hai target PlatformIO, compile custom chip và lint Wokwi offline, không tiêu hao phút mô phỏng. Hardware acceptance chỉ chạy khi yêu cầu nghiệm thu rõ ràng (Task 17).
 - Không lưu token vào mã nguồn. Đặt WOKWI_CLI_TOKEN tại Settings > Secrets and variables > Actions.
@@ -45,3 +45,7 @@ See [ring buffer and D05 contract](docs/task-07-ring.md). Development gate is re
 ## Task 08 — Edge Gateway
 
 See [Edge ingestion contract](docs/task-08-edge.md).
+
+## Task 09 — Offline synchronization
+
+See [D04 and synchronization contract](docs/task-09-sync.md).

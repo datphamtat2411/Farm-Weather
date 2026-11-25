@@ -101,7 +101,7 @@ def run_service(args):
         client.username_pw_set(os.environ["EDGE_MQTT_USERNAME"], os.environ.get("EDGE_MQTT_PASSWORD"))
     fatal = []
     # All callbacks use one database connection on the network-loop thread.
-    db = connect(args.db)
+    db = connect(args.db, recover=False)
     def on_connect(c, userdata, flags, reason, properties):
         if reason.is_failure:
             fatal.append(str(reason))
