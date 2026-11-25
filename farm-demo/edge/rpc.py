@@ -33,6 +33,10 @@ def schema(db):
             station TEXT NOT NULL, sequence INTEGER NOT NULL, command_id TEXT NOT NULL,
             payload TEXT NOT NULL, PRIMARY KEY(station,sequence))""")
         db.execute("CREATE INDEX IF NOT EXISTS command_pending ON farm_commands(station,state,created)")
+        db.execute("""CREATE TABLE IF NOT EXISTS command_dispatches (
+            command_id TEXT NOT NULL, sent_ms INTEGER NOT NULL, created_s INTEGER NOT NULL,
+            expires_s INTEGER NOT NULL, ack_sequence INTEGER NOT NULL,
+            PRIMARY KEY(command_id,sent_ms))""")
         db.execute("""CREATE TABLE IF NOT EXISTS command_events (
             command_id TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL,
             result TEXT, stamp INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0,
@@ -82,6 +86,9 @@ def admit(db, raw, stations, now=None):
         with db: db.execute("UPDATE farm_commands SET rpc_id=? WHERE command_id=?",(rpc_id,ident))
         return ident
     with db:
+        require(db.execute("SELECT COUNT(*) FROM farm_commands").fetchone()[0]<4096,"command journal capacity")
+        require(db.execute("SELECT COUNT(*) FROM farm_commands WHERE station=? AND state IN ('PENDING','QUEUED')",
+                           (station,)).fetchone()[0]<32,"station command queue capacity")
         db.execute("""INSERT INTO farm_commands(command_id,station,rpc_id,method,params,created,expires,state,stamp)
             VALUES(?,?,?,?,?,?,?,?,?)""",(ident,station,rpc_id,method,content,p["created_at_ms"],
             p["expires_at_ms"],"EXPIRED" if now>=p["expires_at_ms"] else "PENDING",now))
@@ -118,9 +125,14 @@ def next_downlink(db, station, app, dev, ack_sequence, *, now=None, logical_ts=N
     wire=msg.SerializeToString(deterministic=True)
     require(len(wire)<=51,"command exceeds demo payload")
     with db:
-        db.execute("""UPDATE farm_commands SET dispatched=1,last_send=?,state='QUEUED',
+        updated=db.execute("""UPDATE farm_commands SET dispatched=1,last_send=?,state='QUEUED',
             revision=revision+CASE WHEN state='PENDING' THEN 1 ELSE 0 END,
-            stamp=CASE WHEN state='PENDING' THEN max(stamp+1,?) ELSE stamp END WHERE command_id=?""",(now,now,ident))
+            stamp=CASE WHEN state='PENDING' THEN max(stamp+1,?) ELSE stamp END
+            WHERE command_id=? AND expires>? AND state IN ('PENDING','QUEUED') AND last_send<=?""",
+            (now,now,ident,now,now-5000))
+        if updated.rowcount!=1:
+            return None
+        db.execute("INSERT INTO command_dispatches VALUES(?,?,?,?,?)",(ident,now,created,expiry,ack_sequence))
     return f"application/{app}/device/{dev}/command/down",dict(devEui=dev,confirmed=False,fPort=21,
         data=base64.b64encode(wire).decode("ascii"))
 
@@ -157,6 +169,9 @@ def record_result(db, station, result, now):
             require(prior[0]==content,"conflicting result sequence")
             db.commit();return "duplicate"
         if result["state"]=="APPLIED":
+            require(db.execute("""SELECT 1 FROM command_dispatches WHERE command_id=? AND created_s<=?
+                AND expires_s>?""",(ident,result["ts_s"],result["ts_s"])).fetchone(),
+                "application timestamp outside dispatch validity")
             if row[1]=="set_config":
                 p=json.loads(row[2])
                 require(all(result[k]==p[k] for k in CONFIG),"applied configuration mismatch")
@@ -177,7 +192,9 @@ def flush(db, cloud, now):
     expire(db,now)
     rows=db.execute("""SELECT e.command_id,c.station,c.rpc_id,c.method,e.state,e.result,e.revision,e.stamp
         FROM command_events e JOIN farm_commands c USING(command_id)
-        WHERE e.published=0 ORDER BY e.stamp,e.command_id LIMIT 20""").fetchall()
+        WHERE e.published=0 AND NOT EXISTS (SELECT 1 FROM command_events prior
+            WHERE prior.command_id=e.command_id AND prior.revision<e.revision AND prior.published=0)
+        ORDER BY e.stamp,e.command_id LIMIT 20""").fetchall()
     for ident,station,rpc_id,method,state,raw,rev,stamp in rows:
         result=json.loads(raw) if raw else None
         status={"command_id":ident,"method":method,"state":state,"revision":rev,"result":result}
@@ -200,6 +217,7 @@ def flush(db, cloud, now):
                     "applied_wind_alarm_on":result["wind_alarm_on"],"applied_wind_alarm_off":result["wind_alarm_off"],
                     "applied_report_period_s":result["report_period_s"]}})
         # Native RPC reply is best-effort transport status, not source of truth.
-        cloud.send("v1/gateway/rpc",{"device":station,"id":rpc_id,"data":status})
+        if state in TERMINAL:
+            cloud.send("v1/gateway/rpc",{"device":station,"id":rpc_id,"data":status})
         with db:
             db.execute("UPDATE command_events SET published=1 WHERE command_id=? AND revision=?",(ident,rev))

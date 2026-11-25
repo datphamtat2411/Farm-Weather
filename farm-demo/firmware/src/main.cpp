@@ -424,12 +424,12 @@ void loop(){
     const bool pressed=!digitalRead(confirm_button);
     const auto before=actuation.mode;
     actuation.update(station.seconds,station.status,station.windReady,pressed&&!confirmWasPressed);
-    if(pressed&&!confirmWasPressed)controller.confirm(safeForConfig());
+    const bool remoteReleased=pressed&&!confirmWasPressed&&controller.confirm(safeForConfig());
     confirmWasPressed=pressed;
     driveOutputs();
     const unsigned changed=station.status^prevStatus;
     const unsigned changedFaults=prevFaultMask^faults;
-    if(changed || changedFaults || before!=actuation.mode)emitEvent(changed,changedFaults);
+    if(changed || changedFaults || before!=actuation.mode || remoteReleased)emitEvent(changed,changedFaults);
     prevFaultMask=faults;
     if(changed&farm::WIND)
         WeatherSerial.println(station.status&farm::WIND?"WIND_ALARM_ON":"WIND_ALARM_OFF");

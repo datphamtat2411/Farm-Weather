@@ -118,7 +118,9 @@ public:
 inline wire::Payload encode(uint32_t sequence,uint32_t ts,const Command& c,Result r,
                             const Snapshot& s,unsigned effective,bool buzzer,bool stop){
     wire::Payload p;
-    p.field(1,sequence);p.field(2,ts);p.byte(26);p.byte(16);
+    p.field(1,sequence);p.byte(21);
+    for(unsigned i=0;i<4;++i)p.byte(uint8_t(ts>>(8*i)));
+    p.byte(26);p.byte(16);
     for(auto b:c.id)p.byte(b);
     p.field(4,r.outcome);p.field(5,r.reason);p.field(6,s.version);
     p.field(7,s.on);p.field(8,s.off);p.field(9,s.period);p.field(10,effective);

@@ -1,0 +1,67 @@
+name: Task 13 device command acceptance, replay and expiry
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - write-serial: "ACK MANUAL\n"
+  - wait-serial: 'ACK_MANUAL'
+  - wait-serial: 'RADIO_TX seq=1 fcnt=1 fport=10'
+  - wait-serial: 'RX1'
+  - write-serial: "DOWNLINK 21 0a10010101010101010101010101010101011090e291d8061894e991d80620014801\n"
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - delay: 400ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - wait-serial: 'RADIO_TX seq=2 fcnt=2 fport=22'
+  - wait-serial: 'RX1'
+  - write-serial: "DOWNLINK 21 0a10010101010101010101010101010101011090e291d8061894e991d80620014802\n"
+  - wait-serial: 'RPC_RESULT outcome=4 reason=6 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - wait-serial: 'RADIO_TX seq=3 fcnt=3 fport=22'
+  - wait-serial: 'RX1'
+  - write-serial: "DOWNLINK 21 0a10020202020202020202020202020202021090e291d8061894e991d80620024803\n"
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - wait-serial: 'RADIO_TX seq=4 fcnt=4 fport=22'
+  - wait-serial: 'RX1'
+  - write-serial: "DOWNLINK 21 0a100303030303030303030303030303030310ace191d8061891e291d80620014804\n"
+  - wait-serial: 'RPC_RESULT outcome=3 reason=4 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - wait-serial: 'RADIO_TX seq=5 fcnt=5 fport=22'
+  - wait-serial: 'RX1'
+  - write-serial: "DOWNLINK 21 0a10040404040404040404040404040404041090e291d8061894e991d80620032802300938064084074805\n"
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=2'
+  - write-serial: "ACK AUTO\n"
+  - wait-serial: 'ACK_AUTO'
+  - wait-serial: 'RADIO_TX seq=6 fcnt=6 fport=22'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 1
+  - delay: 300ms
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 0
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0

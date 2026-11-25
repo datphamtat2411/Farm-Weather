@@ -10,7 +10,9 @@ import os
 import re
 import sqlite3
 import ssl
+import threading
 import time
+from contextlib import nullcontext
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,7 +26,7 @@ CAPABILITIES = {
     "viewer": frozenset(),
 }
 HISTORY_KEYS = "record_id,sequence_number,temperature,humidity,pressure,wind_speed,wind_gust,wind_direction,rainfall,battery_voltage,period_s,status,valid_mask"
-ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc)$")
+ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc|rpc_status)$")
 
 class Denied(Exception):
     def __init__(self, status, message):
@@ -56,11 +58,15 @@ class FarmApi:
         self.url, self.ca_file, self.manifest = url, ca_file, manifest
         self.service = Rest(url, ca_file, authorization="ApiKey "+control_key)
         self.audit_path = audit_path
+        self.config_lock=threading.Lock()
         with sqlite3.connect(audit_path) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS audit (
                 id INTEGER PRIMARY KEY, ts_ms INTEGER NOT NULL, actor TEXT NOT NULL,
                 station TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL,
                 outcome TEXT NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS command_requests (
+                command_id TEXT PRIMARY KEY, station TEXT NOT NULL, actor TEXT NOT NULL,
+                method TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL)""")
 
     def audit(self, actor, station, action, detail, outcome):
         with sqlite3.connect(self.audit_path) as db:
@@ -91,6 +97,31 @@ class FarmApi:
                 403, "station permission denied")
         return user_api, actor, roles[0]
 
+    def status(self,user_api,station,body):
+        require(set(body)=={"command_id"},400,"invalid status fields")
+        try:
+            ident=str(uuid.UUID(body["command_id"]))
+        except (ValueError,TypeError,AttributeError):
+            raise Denied(400,"invalid command id") from None
+        with sqlite3.connect(self.audit_path) as db:
+            row=db.execute("SELECT method,created,expires FROM command_requests WHERE station=? AND command_id=?",
+                           (station,ident)).fetchone()
+        require(row is not None,404,"command not found")
+        method,created,expires=row
+        key="command_"+ident.replace("-","")
+        result=user_api.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",keys=key)
+        values=result.get(key,[])
+        status={"command_id":ident,"method":method,"state":"PENDING","result":None,"revision":0}
+        if values:
+            value=json.loads(values[0]["value"])
+            require(value.get("command_id")==ident and value.get("method")==method and
+                    value.get("state") in ("PENDING","QUEUED","APPLIED","REJECTED","EXPIRED","UNKNOWN"),
+                    502,"invalid upstream command status")
+            status=value
+        if status["state"] in ("PENDING","QUEUED") and int(time.time()*1000)>=expires:
+            status={**status,"state":"UNKNOWN","result":None}
+        return {**status,"created_at_ms":created,"expires_at_ms":expires}
+
     def execute(self, authorization, station, action, body):
         actor = "unverified"
         operation = action
@@ -98,6 +129,8 @@ class FarmApi:
         try:
             user_api, actor, role = self.principal(authorization, station)
             require(isinstance(body, dict), 400, "object required")
+            if action == "rpc_status":
+                return self.status(user_api,station,body)
             if action == "rpc":
                 require(set(body)=={"method","params"}, 400, "invalid command fields")
                 operation = body["method"]
@@ -110,16 +143,28 @@ class FarmApi:
                 command_id = str(uuid.uuid4())
                 envelope = {"command_id":command_id, "created_at_ms":now,
                             "expires_at_ms":now+900000, **detail}
-                self.audit(actor,station,operation,{"command_id":command_id,**detail},"ADMITTED")
-                if operation=="set_config":
-                    self.service.request("POST",f"/api/plugins/telemetry/DEVICE/{station}/SHARED_SCOPE",detail)
-                # Persistent native RPC is a request only, not device application.
-                result = self.service.request("POST", f"/api/rpc/oneway/{station}", {
-                    "method": operation, "params": envelope, "persistent": True,
-                    "expirationTime": envelope["expires_at_ms"], "requestUUID":command_id,
-                    "timeout":10000})
+                with self.config_lock if operation=="set_config" else nullcontext():
+                    if operation=="set_config":
+                        path=f"/api/plugins/telemetry/DEVICE/{station}"
+                        desired={a["key"]:a["value"] for a in self.service.request("GET",path+"/values/attributes/SHARED_SCOPE")}
+                        version=desired.get("config_version",0)
+                        require(detail["config_version"]>=version,409,"configuration version rollback")
+                        if detail["config_version"]==version:
+                            require(all(desired.get(k)==v for k,v in detail.items()),409,"configuration version conflict")
+                    with sqlite3.connect(self.audit_path) as db:
+                        db.execute("INSERT INTO command_requests VALUES(?,?,?,?,?,?)",
+                                   (command_id,station,actor,operation,now,envelope["expires_at_ms"]))
+                    self.audit(actor,station,operation,{"command_id":command_id,**detail},"ADMITTED")
+                    if operation=="set_config":
+                        self.service.request("POST",path+"/SHARED_SCOPE",detail)
+                    # Native transport success is not station application.
+                    result = self.service.request("POST", f"/api/rpc/oneway/{station}", {
+                        "method": operation, "params": envelope, "persistent": True,
+                        "expirationTime": envelope["expires_at_ms"], "requestUUID":command_id,
+                        "timeout":10000})
                 detail = {"command_id":command_id,**detail}
-                response = {"command_id":command_id,"state":"PENDING","rpc":result}
+                response = {"command_id":command_id,"state":"PENDING","rpc":result,
+                            "created_at_ms":now,"expires_at_ms":envelope["expires_at_ms"]}
             elif action == "ack":
                 require("ack" in CAPABILITIES[role], 403, "operation denied")
                 require(set(body)=={"alarm_id"}, 400, "invalid ack fields")

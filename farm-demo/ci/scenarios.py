@@ -20,6 +20,7 @@ MANDATORY = {
     "local-alarms": {"verify_alarms.py"},
     "power": {"verify_power.py"},
     "link-recovery": {"verify_link.py"},
+    "remote-control": {"verify_remote_control.py"},
 }
 
 def require(condition, message):

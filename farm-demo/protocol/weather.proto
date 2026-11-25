@@ -59,7 +59,7 @@ message FarmCommand {
 // FPort 22: confirmed device response, independent of weather telemetry.
 message CommandResult {
   required uint32 sequence_number = 1;
-  required uint32 ts_s = 2;
+  required fixed32 ts_s = 2;
   required bytes command_id = 3;
   required uint32 outcome = 4;
   required uint32 reason = 5;

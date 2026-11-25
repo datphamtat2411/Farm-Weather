@@ -147,6 +147,7 @@ def run(url, ca, mqtt_port, audit):
             # command handler -> FPort 22 ingress -> native telemetry/readback.
             from verify_rpc import exercise
             exercise(lambda method,params: call("technician","rpc",{"method":method,"params":params}),
+                     lambda ident:call("viewer","rpc_status",{"command_id":ident}),
                      adapter, rpc_db, clients["technician"], station)
             checked("native RPC, durable queue, firmware command result, separate telemetry and client attributes")
             for name in HUMAN_ROLES:
@@ -162,7 +163,7 @@ def run(url, ca, mqtt_port, audit):
                 else:
                     assert call(name,"rpc",req)["state"]=="PENDING"
                 test={"method":"test_buzzer","params":{}}
-                config={"method":"set_config","params":{"config_version":2,"wind_alarm_on":10,
+                config={"method":"set_config","params":{"config_version":4,"wind_alarm_on":10,
                          "wind_alarm_off":7,"report_period_s":300}}
                 for body in (test,config):
                     if name in ("admin","technician"):

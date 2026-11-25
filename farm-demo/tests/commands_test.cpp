@@ -39,5 +39,7 @@ int main(){
     p.field(4,2);assert(!control::decode(p,decoded));
     const auto result=control::encode(1,150,cmd,{control::Applied,control::Ok},again.snapshot(),900,false,true);
     assert(result.ok&&result.size<=51);
+    control::Snapshot maximum{2147483647u,10,7,900,true};
+    assert(control::encode(UINT32_MAX,UINT32_MAX,cmd,{control::Applied,control::Ok},maximum,900,true,true).size<=51);
     std::cout<<"Command validation, durable admission, replay, safety and configuration PASS\n";
 }

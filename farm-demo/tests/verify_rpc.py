@@ -16,7 +16,7 @@ ROOT=Path(__file__).resolve().parents[1]
 APP,DEV,STATION="farm-demo","0000000000000001","FARM_WS_01"
 MAPPING={APP+"/device/"+DEV:STATION}
 
-def exercise(submit,cloud,path,user,station):
+def exercise(submit,status,cloud,path,user,station):
     with tempfile.TemporaryDirectory() as tmp:
         probe=Path(tmp)/"rpc-probe"
         subprocess.run(["g++","-std=c++17","-Wall","-Wextra","-Werror",
@@ -30,6 +30,7 @@ def exercise(submit,cloud,path,user,station):
                 ("set_config",{"config_version":2,"wind_alarm_on":9,"wind_alarm_off":6,"report_period_s":300},"REJECTED","unsafe"),
                 ("set_config",{"config_version":3,"wind_alarm_on":9,"wind_alarm_off":6,"report_period_s":300},"APPLIED","safe")]:
                 ident=submit(method,params)["command_id"]
+                assert status(ident)["state"]=="PENDING"
                 def row():
                     return db.execute("SELECT state FROM farm_commands WHERE command_id=?",(ident,)).fetchone()
                 assert eventually(row,"native Gateway RPC not received")[0]=="PENDING"
@@ -53,10 +54,11 @@ def exercise(submit,cloud,path,user,station):
                 eventually(synced,"command lifecycle not persisted/read back",seconds=35)
                 data=user.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",keys=key)
                 assert json.loads(data[key][0]["value"])["state"]==expected
+                assert status(ident)["state"]==expected
                 if method=="set_config" and expected=="APPLIED":
                     def confirmed():
                         attrs=user.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/attributes/CLIENT_SCOPE")
                         values={a["key"]:a["value"] for a in attrs}
                         return values.get("applied_config_version")==3 and values.get("applied_wind_alarm_on")==9
                     eventually(confirmed,"client applied configuration absent")
-            db.close()
+        db.close()

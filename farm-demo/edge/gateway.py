@@ -86,7 +86,7 @@ def handle(db, mapping, topic, raw, *, budget=BUDGET):
     if meta['fport']==22:
         try:
             result={k:v for k,v in record.items() if k not in ('device_id','timestamp','sequence_number')}
-            status=rpc.record_result(db,record['device_id'],result,meta['received_at'] if not meta['simulated'] else rpc.now_ms())
+            status=rpc.record_result(db,record['device_id'],result,rpc.now_ms())
         except ValueError:
             quarantine(db,'invalid/conflicting command result',topic,raw)
             return 'invalid',None

@@ -4,6 +4,8 @@ Task 10: real ThingsBoard Gateway MQTT and historical REST.
 The explicit loopback demo mode is only for the isolated test Cloud.
 """
 import json
+import logging
+import sqlite3
 import threading
 import urllib.request
 import urllib.parse
@@ -31,7 +33,7 @@ class MqttRestCloud:
             raise ValueError("choose one REST credential")
         self.headers = ({"X-Authorization": "ApiKey " + api_key.removeprefix("ApiKey ")}
                         if api_key else {"X-Authorization": "Bearer " + api_token} if api_token else {})
-        self.client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
+        self.client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311, manual_ack=rpc_receiver is not None)
         if token:
             self.client.username_pw_set(token)
         if not demo:
@@ -58,8 +60,15 @@ class MqttRestCloud:
         if not any(r.is_failure for r in reasons): self.ready.set()
 
     def on_message(self, client, userdata, message):
-        if self.rpc_receiver and message.topic=="v1/gateway/rpc" and not message.retain:
-            self.rpc_receiver(message.payload)
+        try:
+            if self.rpc_receiver and message.topic=="v1/gateway/rpc" and not message.retain:
+                self.rpc_receiver(message.payload)
+            if message.qos and self.rpc_receiver:
+                if client.ack(message.mid,message.qos)!=mqtt.MQTT_ERR_SUCCESS:
+                    raise RuntimeError("RPC MQTT ACK failed")
+        except (sqlite3.Error, OSError, RuntimeError):
+            logging.getLogger("farm.rpc").error("RPC inbox unavailable")
+            client.disconnect()
 
     def on_disconnect(self, client, userdata, flags, reason, properties):
         self.ready.clear()

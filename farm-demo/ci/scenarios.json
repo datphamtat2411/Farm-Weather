@@ -81,5 +81,20 @@
         "report": "link-recovery.json"
       }
     ]
+  },
+  {
+    "id": "remote-control",
+    "timeout_ms": 120000,
+    "serial": "remote-control.log",
+    "console": "remote-control-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_remote_control.py",
+        "args": [
+          "remote-control.log"
+        ],
+        "report": "remote-control.json"
+      }
+    ]
   }
 ]

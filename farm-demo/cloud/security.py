@@ -87,6 +87,13 @@ def role(api, customer, name, kind, permissions):
             {"name": name, "type": kind, "permissions": permissions, "customerId": customer["id"]})
     def canonical(p):
         return sorted(p) if isinstance(p, list) else {k: sorted(v) for k, v in p.items()}
+    # Narrow, explicit Task 12 -> Task 13 upgrade of the private control role.
+    # Never expand human roles or accept unrelated permission drift.
+    if (name=="Farm control station" and kind=="GROUP" and existing["type"]==kind
+            and not existing.get("excludedPermissions")
+            and canonical(existing["permissions"])==sorted(READ+["RPC_CALL"])
+            and canonical(permissions)==sorted(READ+["RPC_CALL","WRITE_ATTRIBUTES"])):
+        return api.request("POST","/api/role",{**existing,"permissions":permissions})
     if existing["type"] != kind or canonical(existing["permissions"]) != canonical(permissions) or existing.get("excludedPermissions"):
         raise ValueError("security role drift; review before reprovisioning: " + name)
     return existing
