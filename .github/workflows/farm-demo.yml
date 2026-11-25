@@ -197,6 +197,10 @@ jobs:
       - name: Native ThingsBoard Rule Engine lifecycle and historical isolation
         run: |
           python farm-demo/tests/verify_rule_engine.py --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/rule-engine-report.json
+      - name: Rule Engine failure diagnostics
+        if: failure()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml logs --no-color --tail 250 thingsboard | grep -E "ERROR|WARN|Exception|failed" | sed -E 's/(Bearer |token=|password=)[^ ]+/\1[REDACTED]/Ig' || true
       - name: Stop isolated services
         if: always()
         run: |

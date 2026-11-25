@@ -53,3 +53,7 @@ See [D04 and synchronization contract](docs/task-09-sync.md).
 ## Task 10 — ThingsBoard Cloud
 
 See [deployment and integration contract](docs/task-10-thingsboard.md).
+
+## Task 11 — Cloud Rule Engine
+
+See [native Rule Engine and alarm contract](docs/task-11-rule-engine.md). The development gate includes real ThingsBoard lifecycle and historical-isolation tests; hardware acceptance remains deferred.

@@ -105,12 +105,22 @@ def run(path, url, ca, port):
         api=wait_login(url,ca)
         adapter.headers={"X-Authorization":api.authorization}
         clock.advance(60)
-        for _ in range(25):
+        # The sequential Rule Engine commits batches asynchronously. Bound the
+        # recovery by real wall time rather than a small number of fast logical ticks.
+        deadline=time.monotonic()+150
+        previous=None
+        while time.monotonic()<deadline:
             sync.step()
-            if not sync.status()["pending"]:
+            pending=sync.status()["pending"]
+            if pending != previous:
+                print(f"Recovery pending: {pending}",file=sys.stderr)
+                previous=pending
+            if not pending:
                 break
-            time.sleep(.5)
+            time.sleep(1)
             clock.advance(5)
+        if sync.status()["pending"]:
+            print("Unconfirmed records:",db.execute("SELECT sequence_number,state FROM weather_outbox WHERE state != 'SYNCED' ORDER BY sequence_number").fetchall(),file=sys.stderr)
         assert sync.state=="ONLINE" and sync.status()["pending"]==0, sync.status()
         rows=db.execute("SELECT payload_json FROM weather_outbox WHERE state='SYNCED' ORDER BY sequence_number").fetchall()
         assert len(rows)==73
