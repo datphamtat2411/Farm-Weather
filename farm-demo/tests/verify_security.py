@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from verify_thingsboard import wait_login, STATION, MqttRestCloud, provision
+from verify_thingsboard import initial_setup, wait_login, STATION, MqttRestCloud, provision
 from verify_rule_engine import eventually
 from provision import Rest, ApiError
 from security import install_security, activate, issue_key, ROLES, HUMAN_ROLES, uid
@@ -34,10 +34,28 @@ def reject_connection(fn):
     raise AssertionError("insecure connection accepted")
 
 def run(url, ca, mqtt_port, audit):
+    initial_setup(url,ca)
     admin = wait_login(url,ca)
     topology, gateway_token = provision(admin)
     station = topology["devices"][STATION]
     path = f"/api/plugins/telemetry/DEVICE/{station}"
+    # Independent instance: publish real telemetry before assigning ownership;
+    # later scoped reads also prove the existing history survived provisioning.
+    seed=MqttRestCloud("127.0.0.1",mqtt_port,url,topology["devices"],token=gateway_token,
+        api_token=admin.authorization.removeprefix("Bearer "),ca_file=ca,timeout=10)
+    try:
+        seed.connect()
+        seed_stamp=int(time.time()*1000)-1000
+        seed_packet={STATION:[{"ts":seed_stamp,"values":{"record_id":f"{STATION}:1",
+            "sequence_number":1,"status":0,"period_s":300,"valid_mask":127,
+            "temperature":29.5,"humidity":78.2,"pressure":1008.4,"wind_speed":6.3,
+            "wind_gust":8.8,"wind_direction":135,"rainfall":2.5146,"battery_voltage":3.2,
+            "sync_mode":"live"}}]}
+        seed.publish(seed_packet)
+        eventually(lambda:seed.read(seed_packet).get((STATION,seed_stamp),{}).get("record_id")==f"{STATION}:1",
+                   "seed real history")
+    finally:
+        seed.close()
     emails = {name:f"farm-ci-role-{name}@example.invalid" for name in ROLES}
     manifest, users, created = install_security(admin,topology,emails)
     assert all(created.values())

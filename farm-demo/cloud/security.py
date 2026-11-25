@@ -24,7 +24,7 @@ ADMIN_GENERIC = {
 }
 VIEW_GENERIC = {"ALARM": ["READ"], "WIDGET_TYPE": ["READ"], "WIDGETS_BUNDLE": ["READ"],
                 "PROFILE": ["WRITE"], "CUSTOMER": ["READ"]}
-SERVICE_GENERIC = {"USER": ["READ"], "ALARM": ["READ", "WRITE"], "CUSTOMER": ["READ"]}
+SERVICE_GENERIC = {"ALARM": ["READ", "WRITE"], "CUSTOMER": ["READ"]}
 NULL_UUID = "13814000-1dd2-11b2-8080-808080808080"
 
 def uid(obj):
@@ -161,7 +161,7 @@ def install_security(api, topology, emails):
         expected = set()
         operations = ["READ", "READ_TELEMETRY"] if name == "reader" else READ
         if name == "control":
-            operations = READ + ["RPC_CALL", "WRITE_ATTRIBUTES"]
+            operations = READ + ["RPC_CALL"]
         device_role = role(api, customer, "Farm " + name + " station", "GROUP", operations)
         expected.add(bind(api, ug, device_role, station_group))
         if name in HUMAN_ROLES:
@@ -176,6 +176,10 @@ def install_security(api, topology, emails):
         elif name == "control":
             generic = role(api, customer, "Farm control service general", "GENERIC", SERVICE_GENERIC)
             expected.add(bind(api, ug, generic))
+            # Lookup only actual farm human users, not other service identities.
+            lookup = role(api, customer, "Farm human group lookup", "GROUP", ["READ"])
+            for human in HUMAN_ROLES:
+                expected.add(bind(api, ug, lookup, group(api, customer, "USER", "Farm " + human)))
         actual = {uid(p) for p in api.request("GET", f"/api/userGroup/{uid(ug)}/groupPermissions")}
         if actual != expected:
             raise ValueError("unexpected group permission; review existing grants")
