@@ -9,3 +9,4 @@ evidence/
 .env.*
 !.env.example
 *.chip.wasm
+edge/weather_pb2.py

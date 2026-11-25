@@ -97,6 +97,12 @@ def run(entry):
                report, ROOT, env=env)
         require(json.loads(report.read_text(encoding="utf-8")).get("result") == "PASS",
                 f"verifier did not report PASS: {check['script']}")
+    wire_report = EVIDENCE / (entry["id"] + "-wire.json")
+    wire_report.unlink(missing_ok=True)
+    logged([sys.executable, str(ROOT / "tests" / "verify_protocol.py"), "serial", str(serial)],
+           wire_report, ROOT, env=env)
+    require(json.loads(wire_report.read_text(encoding="utf-8")).get("result") == "PASS",
+            "wire protocol verifier did not report PASS")
     print("Scenario verified:", entry["id"])
 
 def main():

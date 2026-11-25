@@ -78,6 +78,10 @@ jobs:
           cp "$RUNNER_TEMP/wokwi-preflight/diagram-lint.log" farm-demo/evidence/
       - name: Install pinned CLI
         run: bash farm-demo/ci/install-wokwi.sh
+      - name: Generate official Python Protobuf bindings
+        run: |
+          python -m pip install -r farm-demo/protocol/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
       - name: Execute and verify one mandatory scenario
         env:
           WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}

@@ -38,6 +38,10 @@ jobs:
           matrix="$(python farm-demo/ci/scenarios.py matrix)"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$matrix" > farm-demo/evidence/scenario-matrix.json
+      - name: Generate official Python Protobuf bindings
+        run: |
+          python -m pip install -r farm-demo/protocol/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
       - name: Native logic and negative-control tests
         run: |
           mkdir -p farm-demo/evidence
@@ -45,7 +49,7 @@ jobs:
           python --version > farm-demo/evidence/toolchain.txt
           g++ --version >> farm-demo/evidence/toolchain.txt
           # Every added native *_test.cpp participates automatically.
-          for required in weather acquisition alarm power; do
+          for required in weather acquisition alarm power protocol; do
             test -f "farm-demo/tests/${required}_test.cpp"
           done
           for source in farm-demo/tests/*_test.cpp; do
@@ -55,6 +59,7 @@ jobs:
             g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include "$source" -o "$RUNNER_TEMP/farm-native-test"
             "$RUNNER_TEMP/farm-native-test" | tee "farm-demo/evidence/$logfile"
           done
+          python farm-demo/tests/verify_protocol.py native farm-demo/evidence/protocol-native.log > farm-demo/evidence/protocol-report.json
           python farm-demo/tests/energy_budget.py > farm-demo/evidence/energy-budget.json
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

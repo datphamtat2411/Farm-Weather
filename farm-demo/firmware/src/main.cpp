@@ -3,6 +3,7 @@
 #include "power.hpp"
 #include "ambient_sensor.hpp"
 #include "sim_pins.hpp"
+#include "wire.hpp"
 using namespace farm::sim;
 
 #if !defined(FARM_WOKWI_SIMULATION) || !defined(STM32F103xB)
@@ -84,6 +85,22 @@ void printUint64(uint64_t n){
     do {buf[--i]=char('0'+n%10);n/=10;}while(n);
     WeatherSerial.print(buf+i);
 }
+// Hex is only the serial simulation adapter. The wire bytes contain no JSON or device ID.
+void appendWire(const farm::wire::Payload& payload,uint8_t port){
+    if(!payload.ok || !payload.size){
+        WeatherSerial.print(",\"wire_error\":true");
+        return;
+    }
+    static const char digits[]="0123456789abcdef";
+    char hex[2*farm::wire::capacity+1];
+    for(size_t i=0;i<payload.size;++i){
+        hex[2*i]=digits[payload.data[i]>>4];
+        hex[2*i+1]=digits[payload.data[i]&15];
+    }
+    hex[2*payload.size]='\0';
+    WeatherSerial.print(",\"fport\":");WeatherSerial.print(port);
+    WeatherSerial.print(",\"wire_hex\":\"");WeatherSerial.print(hex);WeatherSerial.print("\"");
+}
 void emitTelemetry(){
     unsigned angle=0;
     const bool directionUsable=directionValid && station.windPeriodValid && station.windPeriod>0 && directionPeriod.mean(angle);
@@ -118,7 +135,19 @@ void emitTelemetry(){
     if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
     s.print(",\"status\":");s.print(station.status);
     s.print(",\"valid_mask\":");s.print(valid);
-    // Separate diagnostics within serial demo; Task 06 maps wire schema explicitly.
+    farm::wire::Record record{};
+    record.sequence=sequence;record.ts=EPOCH+station.seconds;record.period_s=station.periodElapsed;
+    record.valid=valid;record.status=station.status;
+    if(valid&farm::quality::TEMPERATURE)record.temperature=farm::wire::x10(atmosphere.temperature.filtered);
+    if(valid&farm::quality::HUMIDITY)record.humidity=unsigned(farm::wire::x10(atmosphere.humidity.filtered));
+    if(valid&farm::quality::PRESSURE)record.pressure=unsigned(farm::wire::x10(atmosphere.pressure.filtered));
+    if(valid&farm::quality::WIND){
+        record.wind=unsigned(farm::wire::x10(farm::windSpeed(station.windPeriod,station.periodElapsed)));
+        record.gust=unsigned(farm::wire::x10(farm::windSpeed(station.gust,farm::design::wind_window_s)));
+    }
+    record.direction=angle;record.rain=station.rainPeriod;record.battery=batteryMv;
+    appendWire(farm::wire::encode(record),farm::wire::PERIODIC_PORT);
+    // Diagnostics are not part of the compact wire schema.
     s.print(",\"next_period_s\":");s.print(station.period);
     s.print(",\"ambient_samples\":");s.print(ambientSamples);
     s.print(",\"direction_samples\":");s.print(directionSamples);
@@ -169,6 +198,21 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     s.print(",\"rain_10min_mm\":");s.print(farm::rainfall(station.rainWindow),4);
     if(atmosphere.temperature.valid){s.print(",\"temperature\":");s.print(latestTemperature,1);}
     if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
+    farm::wire::Event event{};
+    event.sequence=sequence;event.ts=EPOCH+station.seconds;event.changed=changed;event.status=station.status;
+    event.requested_period=station.period;event.fault=faultMask();event.changed_fault=changedFaults;
+    switch(actuation.mode){
+        case farm::LocalMode::Alarm:event.mode=farm::wire::Mode::Alarm;break;
+        case farm::LocalMode::AwaitInspection:event.mode=farm::wire::Mode::AwaitInspection;break;
+        default:event.mode=farm::wire::Mode::Normal;break;
+    }
+    event.buzzer=actuation.buzzer;event.stop=actuation.stopRequest;
+    event.has_wind=station.windReady;event.has_temp=atmosphere.temperature.valid;event.has_battery=batteryValid;
+    if(event.has_wind)event.wind=unsigned(farm::wire::x10(farm::windSpeed(station.currentWindPulses,3)));
+    event.rain=station.rainWindow;
+    if(event.has_temp)event.temperature=farm::wire::x10(latestTemperature);
+    event.battery=batteryMv;
+    appendWire(farm::wire::encode(event),farm::wire::EVENT_PORT);
     s.println("}");
 }
 void setup(){
