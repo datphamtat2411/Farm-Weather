@@ -95,7 +95,7 @@ class MqttRestCloud:
         for device,records in payload.items():
             if device not in self.devices:
                 raise CloudUnavailable("device has no provisioned REST ID")
-            keys=sorted({k for r in records for k in r["values"] if k!="sync_mode"})
+            keys=sorted({k for r in records for k in r["values"] if k not in ("sync_mode","sync_state")})
             stamps={r["ts"] for r in records}
             query=urllib.parse.urlencode(dict(keys=",".join(keys),startTs=max(0,min(stamps)-1),
                 endTs=max(stamps)+1,agg="NONE",limit=10000))

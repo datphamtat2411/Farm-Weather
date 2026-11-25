@@ -127,7 +127,18 @@ class Synchronizer:
             period = rec.get("period_s",rec.get("requested_period_s",300))
             latest = self.db.execute("""SELECT max(ts_ms) FROM weather_outbox
                 WHERE device_id=? AND kind=? AND state!='QUARANTINE'""",(dev,kind)).fetchone()[0]
+            # Historical events must not transiently raise an alarm when a
+            # newer station snapshot is already buffered at the Edge.
+            newest_state = self.db.execute("""SELECT sequence_number FROM weather_outbox
+                WHERE device_id=? AND state!='QUARANTINE'
+                ORDER BY ts_ms DESC, sequence_number DESC LIMIT 1""",(dev,)).fetchone()
             data["sync_mode"] = "live" if ts == latest and 0 <= now-ts <= 2*period*1000 else "history"
+            if kind == "event" and newest_state and seq != newest_state[0]:
+                data["sync_mode"] = "history"
+            # A still-fresh periodic sample may refresh weather values but not
+            # the confirmed alarm state when a newer event is already known.
+            if kind == "periodic" and newest_state and seq != newest_state[0] and data["sync_mode"] == "live":
+                data["sync_state"] = "history"
             packet.setdefault(dev,[]).append(dict(ts=ts,values=data))
         for records in packet.values():
             records.sort(key=lambda r:r["ts"])

@@ -122,6 +122,8 @@ def graph(chain_id, root_id, notify, *, gateway=False):
     g.link(start,tail)
     state = g.transform("Build server-side current state", (ROOT/"scripts/state.js").read_text(),3260,780)
     g.link(tail,state,"persist")
+    if not gateway:
+        g.link(route,state,"periodic")
     attr = g.node("telemetry.TbMsgAttributesNode","Persist confirmed state", {
         "processingSettings":ON,"scope":"SERVER_SCOPE","notifyDevice":False,
         "sendAttributesUpdatedNotification":False,"updateAttributesOnlyOnValueChange":True},3,3500,780)
@@ -152,9 +154,17 @@ def install(api, topology):
         old = api.request("GET","/api/ruleChain/"+chain_id["id"]+"/metadata")
         # Preserve node UUIDs on identical re-provisioning. Refuse unknown edits.
         if old.get("nodes"):
-            def normalized(m):
-                return [(x["name"],x["type"],x["configuration"]) for x in m["nodes"]]
-            if normalized(old)!=normalized(meta) or old["connections"]!=meta["connections"]:
+            def same_graph():
+                if len(old["nodes"]) != len(meta["nodes"]):
+                    return False
+                for a,b in zip(old["nodes"],meta["nodes"]):
+                    if a["name"] != b["name"] or a["type"] != b["type"]:
+                        return False
+                    if any(a["configuration"].get(k)!=v for k,v in b["configuration"].items()):
+                        return False
+                key = lambda l: (l["fromIndex"],l["toIndex"],l["type"])
+                return sorted(map(key,old["connections"])) == sorted(map(key,meta["connections"]))
+            if not same_graph():
                 raise ValueError("managed rule chain differs; migrate explicitly rather than overwrite")
         else:
             api.request("POST","/api/ruleChain/metadata",meta)

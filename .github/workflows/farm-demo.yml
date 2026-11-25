@@ -194,6 +194,9 @@ jobs:
           python farm-demo/tests/verify_thingsboard.py --db farm-demo/evidence/thingsboard-edge.sqlite --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/thingsboard-report.json
           docker compose -f farm-demo/cloud/compose.yml exec -T postgres psql -U thingsboard -d thingsboard -c 'SELECT version();' > farm-demo/evidence/postgres-version.txt
           docker image inspect thingsboard/tb-node:4.4.1 --format '{{json .RepoDigests}}' > farm-demo/evidence/thingsboard-image.txt
+      - name: Native ThingsBoard Rule Engine lifecycle and historical isolation
+        run: |
+          python farm-demo/tests/verify_rule_engine.py --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/rule-engine-report.json
       - name: Stop isolated services
         if: always()
         run: |

@@ -49,12 +49,14 @@ if (gateway) {
         }
     }
     var fresh = msg.sync_mode === 'live' && ts <= now && now-ts <= p*2000;
+    var stateEligible = msg.sync_state !== 'history';
     delete msg.sync_mode;
+    delete msg.sync_state;
     var newer = seq > Number(metadata.ss_farm_state_seq || 0) && ts >= Number(metadata.ss_farm_state_ts || 0);
     var latest = fresh && (event ? newer :
         seq > Number(metadata.ss_farm_periodic_seq || 0) && ts >= Number(metadata.ss_farm_periodic_ts || 0));
     metadata.farm_save = latest ? 'latest' : 'history';
-    metadata.farm_route = fresh && newer ? 'state' : metadata.farm_save;
+    metadata.farm_route = fresh && newer && stateEligible ? 'state' : metadata.farm_save;
     metadata.farm_record_id = id;
     metadata.farm_seq = String(seq);
     metadata.farm_status = String(status);
@@ -62,7 +64,7 @@ if (gateway) {
     metadata.farm_event = String(event);
     // A periodic sample older than a same-second event may update measurement
     // latest, but never the state. Store the periodic cursor only on state path.
-    if (metadata.farm_route === 'latest') metadata.farm_route = 'history';
+    if (metadata.farm_route === 'latest') metadata.farm_route = 'periodic';
 }
 metadata.farm_original = JSON.stringify(msg);
 return {msg: msg, metadata: metadata, msgType: msgType};
