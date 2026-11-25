@@ -38,7 +38,7 @@ def run(url, ca, mqtt_port, audit):
     topology, gateway_token = provision(admin)
     station = topology["devices"][STATION]
     path = f"/api/plugins/telemetry/DEVICE/{station}"
-    emails = {name:f"farm-ci-{name}@example.invalid" for name in ROLES}
+    emails = {name:f"farm-ci-role-{name}@example.invalid" for name in ROLES}
     manifest, users, created = install_security(admin,topology,emails)
     assert all(created.values())
     assert install_security(admin,topology,emails)[0]==manifest
