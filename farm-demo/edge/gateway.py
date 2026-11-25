@@ -131,7 +131,13 @@ def run_service(args):
             LOG.error("Edge unavailable: %s", type(exc).__name__)
             fatal.append(type(exc).__name__)
             c.disconnect()
-    client.on_connect, client.on_message = on_connect, on_message
+    def on_subscribe(c, userdata, mid, reasons, properties):
+        if any(reason.is_failure for reason in reasons):
+            fatal.append("subscription rejected")
+            c.disconnect()
+            return
+        LOG.info("EDGE_SUBSCRIBED")
+    client.on_connect, client.on_message, client.on_subscribe = on_connect, on_message, on_subscribe
     try:
         client.connect(args.host, args.port, keepalive=30)
         client.loop_forever()
