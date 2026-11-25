@@ -19,10 +19,20 @@ class SmokeVerifierTest(unittest.TestCase):
             log.write_text(self.fixture(), encoding="utf-8")
             self.assertEqual(verify(log, str(Path(tmp) / "test.sqlite"))["result"], "PASS")
 
+    def test_accept_coalesced_wokwi_serial_stream(self):
+        # Observed CLI artifact: all control markers are concatenated and
+        # the final complete telemetry object ends with CRLF.
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "serial.log"
+            log.write_text(self.fixture().replace("\n", "").strip() + "\r\n", encoding="utf-8")
+            self.assertEqual(verify(log, str(Path(tmp) / "test.sqlite"))["result"], "PASS")
+
     def test_reject_missing_event_or_wrong_data(self):
         cases = (self.fixture().replace("WIND_ALARM_OFF\n", ""),
                  self.fixture().replace("0.2794", "0.0"),
                  self.fixture().replace("RAIN_TIPS=1", "RAIN_TIPS=10"),
+                 self.fixture().replace("RAIN_TIPS=1", "RAIN_TIPS=10").replace("\n", ""),
+                 self.fixture().replace("WIND_ALARM_OFF", "WIND_ALARM_OFFEXTRA"),
                  self.fixture().replace("WIND_ALARM_ON", "WIND_ALARM_ON\nWIND_ALARM_ON"),
                  self.fixture().replace('"sequence_number": 1', '"sequence_number": true'),
                  self.fixture().replace("1795453500", "1795453501"),

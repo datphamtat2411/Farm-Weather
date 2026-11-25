@@ -1,6 +1,7 @@
 """Verify evidence produced by the actual STM32/Wokwi foundation scenario."""
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -14,14 +15,13 @@ def require(condition, message):
 def verify(log_path, db_path):
     log = Path(log_path).read_text(encoding="utf-8")
     markers = ("READY FARM_WS_01 SIMULATION", "WIND_ALARM_ON", "RAIN_TIPS=1", "WIND_ALARM_OFF", "TELEMETRY {")
-    lines = [line.strip() for line in log.splitlines()]
-    position = -1
-    for marker in markers:
-        matches = [i for i, line in enumerate(lines) if (line.startswith(marker) if marker == "TELEMETRY {" else line == marker)]
-        require(len(matches) == 1 and matches[0] > position, f"missing, duplicate or out-of-order serial marker: {marker}")
-        position = matches[0]
-    records = [json.loads(line.split("TELEMETRY ", 1)[1])
-               for line in log.splitlines() if "TELEMETRY {" in line]
+    # Wokwi 0.29.1 may coalesce adjacent println messages in the saved serial
+    # stream. Parse the complete ordered smoke grammar, not individual lines
+    # or permissive substrings. Only whitespace is optional between tokens.
+    prefix = r"\s*".join(re.escape(marker) for marker in markers[:-1])
+    match = re.fullmatch(r"\s*" + prefix + r"\s*TELEMETRY (\{[^\r\n]*\})\s*", log)
+    require(match is not None, "unexpected, duplicate, missing or out-of-order smoke serial event")
+    records = [json.loads(match.group(1))]
     require(len(records) == 1, f"expected one complete periodic record, got {len(records)}")
     r = records[0]
     require(type(r["sequence_number"]) is int and type(r["period_s"]) is int
