@@ -54,6 +54,7 @@ message FarmCommand {
   optional uint32 wind_alarm_on = 6;
   optional uint32 wind_alarm_off = 7;
   optional uint32 report_period_s = 8;
+  required uint32 ack_sequence = 9;
 }
 // FPort 22: confirmed device response, independent of weather telemetry.
 message CommandResult {

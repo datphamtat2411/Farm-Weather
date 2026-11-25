@@ -111,14 +111,13 @@ class FarmApi:
                 envelope = {"command_id":command_id, "created_at_ms":now,
                             "expires_at_ms":now+900000, **detail}
                 self.audit(actor,station,operation,{"command_id":command_id,**detail},"ADMITTED")
+                if operation=="set_config":
+                    self.service.request("POST",f"/api/plugins/telemetry/DEVICE/{station}/SHARED_SCOPE",detail)
                 # Persistent native RPC is a request only, not device application.
                 result = self.service.request("POST", f"/api/rpc/oneway/{station}", {
                     "method": operation, "params": envelope, "persistent": True,
                     "expirationTime": envelope["expires_at_ms"], "requestUUID":command_id,
                     "timeout":10000})
-                if operation=="set_config":
-                    # Desired shared state is distinct from device-reported client state.
-                    self.service.request("POST",f"/api/plugins/telemetry/DEVICE/{station}/SHARED_SCOPE",detail)
                 detail = {"command_id":command_id,**detail}
                 response = {"command_id":command_id,"state":"PENDING","rpc":result}
             elif action == "ack":

@@ -145,6 +145,7 @@ void driveOutputs(){
     digitalWrite(buzzer,(actuation.buzzer||controller.testing(station.seconds))?HIGH:LOW);
     digitalWrite(relay,(actuation.stopRequest||controller.snapshot().stop)?HIGH:LOW);
 }
+void applyAck(uint8_t port,const farm::wire::Payload& p);
 uint32_t lastCommandFrame=0;
 void applyCommand(const farm::wire::Payload& p){
     farm::control::Command c;
@@ -155,7 +156,7 @@ void applyCommand(const farm::wire::Payload& p){
     const bool trusted=clockTrusted&&farm::storage::timestamp(EPOCH,clockOffset,station.seconds,now);
     lastCommandFrame=radio.frameCounter;
     // A response needs a durable sequence before any side effect.
-    if(!reserveRecord())return;
+    if(!reserveRecord()){farm::wire::Payload ack;ack.field(1,c.ack);applyAck(farm::wire::ACK_PORT,ack);return;}
     const auto r=controller.execute(c,now,trusted,safeForConfig(),station.seconds);
     const auto& config=controller.snapshot();
     station.configure(config.on,config.off,config.period);
@@ -166,6 +167,8 @@ void applyCommand(const farm::wire::Payload& p){
     WeatherSerial.print("RPC_RESULT outcome=");WeatherSerial.print(unsigned(r.outcome));
     WeatherSerial.print(" reason=");WeatherSerial.print(unsigned(r.reason));
     WeatherSerial.print(" version=");WeatherSerial.println(config.version);
+    // One Class A downlink carries both command and explicit durable data ACK.
+    farm::wire::Payload ack;ack.field(1,c.ack);applyAck(farm::wire::ACK_PORT,ack);
 }
 void applyAck(uint8_t port,const farm::wire::Payload& p){
     const bool warned=ring.nearFull();

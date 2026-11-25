@@ -19,7 +19,8 @@ int main(){
     assert(c.execute(cmd,101,true,true,5).outcome==control::Unknown&&!c.testing(5));
     cmd.id[0]=2;cmd.method=control::SetConfig;cmd.version=2;cmd.on=9;cmd.off=6;cmd.period=900;
     assert(c.execute(cmd,101,true,false,5).reason==control::Unsafe);
-    assert(c.execute(cmd,101,true,true,5).outcome==control::Applied);
+    assert(c.execute(cmd,101,true,true,5).outcome==control::Unknown);
+    cmd.id[0]=4;assert(c.execute(cmd,101,true,true,5).outcome==control::Applied);
     Station station;station.configure(c.snapshot().on,c.snapshot().off,c.snapshot().period);
     assert(station.period==900&&station.activePeriod==300);
     for(int i=0;i<3;++i)station.tick(14,0);
@@ -33,7 +34,7 @@ int main(){
     assert(!reboot.confirm(false)&&reboot.confirm(true));
     control::Controller<Memory> again(flash);assert(again.begin()&&!again.snapshot().stop);
     wire::Payload p;p.byte(10);p.byte(16);for(auto b:cmd.id)p.byte(b);
-    p.field(2,100);p.field(3,200);p.field(4,2);
+    p.field(2,100);p.field(3,200);p.field(4,2);p.field(9,1);
     control::Command decoded;assert(control::decode(p,decoded)&&decoded.method==2);
     p.field(4,2);assert(!control::decode(p,decoded));
     const auto result=control::encode(1,150,cmd,{control::Applied,control::Ok},again.snapshot(),900,false,true);

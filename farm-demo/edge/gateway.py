@@ -132,15 +132,13 @@ def run_service(args):
             else:
                 outcome, down = handle(db, mapping, message.topic, message.payload)
             if down:
-                topic, command = down
+                record, meta, app, dev = parse_uplink(message.topic,message.payload,mapping)
+                pending=rpc.next_downlink(db,record["device_id"],app,dev,record["sequence_number"],
+                    logical_ts=meta["received_at"] if meta["simulated"] else None)
+                topic, command = pending or down
                 publication = c.publish(topic, json.dumps(command), qos=1, retain=False)
                 if publication.rc != 0:
-                    raise RuntimeError("ACK publish not queued")
-                record, meta, app, dev = parse_uplink(message.topic,message.payload,mapping)
-                pending=rpc.next_downlink(db,record["device_id"],app,dev,
-                    logical_ts=meta["received_at"] if meta["simulated"] else None)
-                if pending and c.publish(pending[0],json.dumps(pending[1]),qos=1,retain=False).rc != 0:
-                    raise RuntimeError("RPC downlink not queued")
+                    raise RuntimeError("downlink publish not queued")
             if message.qos:
                 if c.ack(message.mid, message.qos) != 0:
                     raise RuntimeError("MQTT acknowledgement failed")

@@ -9,7 +9,7 @@ enum Outcome:uint32_t { Applied=1, Rejected=2, Expired=3, Unknown=4 };
 enum Reason:uint32_t { Ok=0, Invalid=1, Unsafe=2, Stale=3, Clock=4, Storage=5, Replay=6 };
 struct Command {
     uint8_t id[16]={};
-    uint32_t created=0,expires=0,method=0,version=0,on=0,off=0,period=0;
+    uint32_t created=0,expires=0,method=0,version=0,on=0,off=0,period=0,ack=0;
 };
 inline bool varint(const wire::Payload& p,size_t& i,uint32_t& out){
     out=0;
@@ -29,14 +29,14 @@ inline bool decode(const wire::Payload& p,Command& c){
     size_t i=18;unsigned fields=0,last=1;
     while(i<p.size){
         uint32_t tag=0,value=0;
-        if(!varint(p,i,tag)||tag%8||tag/8<=last||tag/8>8||!varint(p,i,value))return false;
+        if(!varint(p,i,tag)||tag%8||tag/8<=last||tag/8>9||!varint(p,i,value))return false;
         last=tag/8;fields|=1u<<last;
         switch(last){
             case 2:c.created=value;break;case 3:c.expires=value;break;case 4:c.method=value;break;
-            case 5:c.version=value;break;case 6:c.on=value;break;case 7:c.off=value;break;case 8:c.period=value;break;
+            case 5:c.version=value;break;case 6:c.on=value;break;case 7:c.off=value;break;case 8:c.period=value;break;case 9:c.ack=value;break;
         }
     }
-    return fields==(c.method==SetConfig?0x1fcu:0x1cu)&&c.created&&c.expires>c.created&&
+    return fields==(c.method==SetConfig?0x3fcu:0x21cu)&&c.ack&&c.created&&c.expires>c.created&&
         c.expires-c.created<=900&&c.method>=TestBuzzer&&c.method<=SetConfig;
 }
 struct Snapshot {uint32_t version=1,on=10,off=7,period=300;bool stop=false;};
@@ -95,9 +95,11 @@ public:
         Snapshot wanted=state;
         if(c.method==SetConfig){
             wanted.version=c.version;wanted.on=c.on;wanted.off=c.off;wanted.period=c.period;
-            if(!valid(wanted))return {Rejected,Invalid};
-            if(c.version<=state.version)return {Rejected,Stale};
-            if(!safe)return {Rejected,Unsafe};
+            Reason denied=Ok;
+            if(!valid(wanted))denied=Invalid;
+            else if(c.version<=state.version)denied=Stale;
+            else if(!safe)denied=Unsafe;
+            if(denied!=Ok){if(!commit(c.id,state))return {Rejected,Storage};return {Rejected,denied};}
         }else if(c.method==StopIrrigation)wanted.stop=true;
         else if(c.method!=TestBuzzer)return {Rejected,Invalid};
         // Durable admission BEFORE changing outputs. A crash after admission

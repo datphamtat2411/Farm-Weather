@@ -7,7 +7,7 @@ import base64
 import datetime as dt
 import json
 import re
-from weather_pb2 import WeatherAck
+from weather_pb2 import WeatherAck, FarmCommand
 from google.protobuf.message import DecodeError
 
 TX = re.compile(r"RADIO_TX seq=(\d+) fcnt=(\d+) fport=(\d+) hex=([0-9a-f]+) delivered=([01]) ts=(\d+)")
@@ -39,7 +39,9 @@ class SerialBridge:
                 return
             data = base64.b64decode(command["data"], validate=True)
             if command["fPort"]==21:
-                if 0<len(data)<=51: self.command=data.hex()
+                if 0<len(data)<=51:
+                    parsed=FarmCommand.FromString(data)
+                    if parsed.IsInitialized() and parsed.ack_sequence==self.active: self.command=data.hex()
                 return
             if command["fPort"]!=20: return
             ack = WeatherAck.FromString(data)
@@ -73,9 +75,9 @@ class SerialBridge:
                              fPort=int(port), fCnt=int(fcnt), data=base64.b64encode(bytes.fromhex(wire)).decode(),
                              time=received.isoformat(), timeTrusted=self.trusted, simulation=True, rxInfo=[])
                 self.publish(self.up_topic, json.dumps(event))
-        if line=="RX1" and self.active is not None and self.command:
+        if line in ("RX1","RX2") and self.active is not None and self.command:
             command="DOWNLINK 21 "+self.command
-            self.command=None
+            self.command,self.active,self.ack=None,None,None
             return command
         if line in ("RX1", "RX2") and self.ack:
             command = "DOWNLINK 20 "+self.ack

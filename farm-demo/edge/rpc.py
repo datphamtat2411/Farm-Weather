@@ -33,6 +33,17 @@ def schema(db):
             station TEXT NOT NULL, sequence INTEGER NOT NULL, command_id TEXT NOT NULL,
             payload TEXT NOT NULL, PRIMARY KEY(station,sequence))""")
         db.execute("CREATE INDEX IF NOT EXISTS command_pending ON farm_commands(station,state,created)")
+        db.execute("""CREATE TABLE IF NOT EXISTS command_events (
+            command_id TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL,
+            result TEXT, stamp INTEGER NOT NULL, published INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(command_id,revision))""")
+        db.execute("""CREATE TRIGGER IF NOT EXISTS command_admission AFTER INSERT ON farm_commands
+            BEGIN INSERT INTO command_events(command_id,revision,state,result,stamp)
+                VALUES(new.command_id,new.revision,new.state,new.result,new.stamp); END""")
+        db.execute("""CREATE TRIGGER IF NOT EXISTS command_transition AFTER UPDATE OF revision ON farm_commands
+            WHEN new.revision>old.revision
+            BEGIN INSERT INTO command_events(command_id,revision,state,result,stamp)
+                VALUES(new.command_id,new.revision,new.state,new.result,new.stamp); END""")
 
 def envelope(raw, stations):
     require(len(raw)<=8192,"oversize RPC")
@@ -79,9 +90,9 @@ def admit(db, raw, stations, now=None):
 def expire(db, now):
     with db:
         db.execute("""UPDATE farm_commands SET state=CASE WHEN dispatched=1 THEN 'UNKNOWN' ELSE 'EXPIRED' END,
-            revision=revision+1,stamp=? WHERE expires<=? AND state IN ('PENDING','QUEUED')""",(now,now))
+            revision=revision+1,stamp=max(stamp+1,?) WHERE expires<=? AND state IN ('PENDING','QUEUED')""",(now,now))
 
-def next_downlink(db, station, app, dev, *, now=None, logical_ts=None):
+def next_downlink(db, station, app, dev, ack_sequence, *, now=None, logical_ts=None):
     now=now_ms() if now is None else now
     expire(db,now)
     row=db.execute("""SELECT command_id,method,params,expires FROM farm_commands WHERE station=?
@@ -101,7 +112,7 @@ def next_downlink(db, station, app, dev, *, now=None, logical_ts=None):
     if expiry<=created:
         return None
     msg=FarmCommand(command_id=uuid.UUID(ident).bytes,created_at_s=created,
-        expires_at_s=expiry,method=METHODS[method])
+        expires_at_s=expiry,method=METHODS[method],ack_sequence=ack_sequence)
     if method=="set_config":
         for k in CONFIG: setattr(msg,k,p[k])
     wire=msg.SerializeToString(deterministic=True)
@@ -109,7 +120,7 @@ def next_downlink(db, station, app, dev, *, now=None, logical_ts=None):
     with db:
         db.execute("""UPDATE farm_commands SET dispatched=1,last_send=?,state='QUEUED',
             revision=revision+CASE WHEN state='PENDING' THEN 1 ELSE 0 END,
-            stamp=CASE WHEN state='PENDING' THEN ? ELSE stamp END WHERE command_id=?""",(now,now,ident))
+            stamp=CASE WHEN state='PENDING' THEN max(stamp+1,?) ELSE stamp END WHERE command_id=?""",(now,now,ident))
     return f"application/{app}/device/{dev}/command/down",dict(devEui=dev,confirmed=False,fPort=21,
         data=base64.b64encode(wire).decode("ascii"))
 
@@ -154,7 +165,7 @@ def record_result(db, station, result, now):
         db.execute("INSERT INTO command_receipts VALUES(?,?,?,?)",(station,seq,ident,content))
         # A replay response must not downgrade a verified terminal result.
         if row[3] not in ("APPLIED","REJECTED","EXPIRED") and not (row[4] and result["state"]=="UNKNOWN"):
-            db.execute("""UPDATE farm_commands SET state=?,result=?,revision=revision+1,stamp=?
+            db.execute("""UPDATE farm_commands SET state=?,result=?,revision=revision+1,stamp=max(stamp+1,?)
                 WHERE command_id=?""",(result["state"],content,now,ident))
         db.commit();return "inserted"
     except BaseException:
@@ -164,8 +175,9 @@ def flush(db, cloud, now):
     """Report status on a dedicated telemetry namespace; verify actual history.
     Client attributes derive only from the most recent confirmed config version."""
     expire(db,now)
-    rows=db.execute("""SELECT command_id,station,rpc_id,method,state,result,revision,stamp FROM farm_commands
-        WHERE published<revision ORDER BY stamp,command_id LIMIT 20""").fetchall()
+    rows=db.execute("""SELECT e.command_id,c.station,c.rpc_id,c.method,e.state,e.result,e.revision,e.stamp
+        FROM command_events e JOIN farm_commands c USING(command_id)
+        WHERE e.published=0 ORDER BY e.stamp,e.command_id LIMIT 20""").fetchall()
     for ident,station,rpc_id,method,state,raw,rev,stamp in rows:
         result=json.loads(raw) if raw else None
         status={"command_id":ident,"method":method,"state":state,"revision":rev,"result":result}
@@ -190,4 +202,4 @@ def flush(db, cloud, now):
         # Native RPC reply is best-effort transport status, not source of truth.
         cloud.send("v1/gateway/rpc",{"device":station,"id":rpc_id,"data":status})
         with db:
-            db.execute("UPDATE farm_commands SET published=? WHERE command_id=? AND revision=?",(rev,ident,rev))
+            db.execute("UPDATE command_events SET published=1 WHERE command_id=? AND revision=?",(ident,rev))

@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+import sys
 from pathlib import Path
 
 from verify_thingsboard import initial_setup, wait_login, STATION, MqttRestCloud, provision
@@ -17,6 +18,8 @@ from provision import Rest, ApiError
 from security import install_security, activate, issue_key, ROLES, HUMAN_ROLES, uid
 from farm_api import FarmApi, make_server
 from sync import CloudUnavailable
+import rpc as command_rpc
+from outbox import connect
 
 def deny(fn, statuses=(401,403)):
     try:
@@ -104,8 +107,14 @@ def run(url, ca, mqtt_port, audit):
     deny(lambda:reader.request("GET",f"/api/device/{station}/credentials"))
     checked("separate limited native API key")
     # Real MQTT/TLS adapter uses the restricted key, not tenant admin JWT.
+    rpc_db=str(Path(audit).with_name("rpc-edge.sqlite"))
+    def receive(raw):
+        with connect(rpc_db,recover=False) as db:
+            command_rpc.schema(db)
+            command_rpc.admit(db,raw,topology["devices"])
+        db.close()
     adapter=MqttRestCloud("127.0.0.1",mqtt_port,url,topology["devices"],
-                          token=gateway_token,api_key=reader_key["value"],ca_file=ca,timeout=10)
+                          token=gateway_token,api_key=reader_key["value"],ca_file=ca,timeout=10,rpc_receiver=receive)
     try:
         adapter.connect()
         stamp=int(time.time()*1000)
@@ -134,6 +143,12 @@ def run(url, ca, mqtt_port, audit):
             return Rest(endpoint,ca,authorization=auth).request("POST",f"/api/farm/stations/{target}/{action}",body)
         try:
             req={"method":"request_stop_irrigation","params":{}}
+            # Actual native RPC (TLS) -> Edge callback -> canonical C++ firmware
+            # command handler -> FPort 22 ingress -> native telemetry/readback.
+            from verify_rpc import exercise
+            exercise(lambda method,params: call("technician","rpc",{"method":method,"params":params}),
+                     adapter, rpc_db, clients["technician"], station)
+            checked("native RPC, durable queue, firmware command result, separate telemetry and client attributes")
             for name in HUMAN_ROLES:
                 for action,body in [("export",{"startTs":stamp-1000,"endTs":stamp+1000}),
                                     ("ack",{"alarm_id":alarm_id})]:
