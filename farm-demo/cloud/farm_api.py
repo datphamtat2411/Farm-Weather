@@ -129,7 +129,14 @@ class FarmApi:
                 require(alarm["originator"]=={"entityType":"DEVICE","id":station},403,"alarm scope denied")
                 detail = {"alarm_id":ident}
                 self.audit(actor,station,operation,detail,"ADMITTED")
-                self.service.request("POST", f"/api/alarm/{ident}/ack")
+                # ACK is an idempotent business operation. The native API
+                # returns 400 on a repeated ACK, including concurrent requests.
+                if not alarm.get("acknowledged"):
+                    try:
+                        self.service.request("POST", f"/api/alarm/{ident}/ack")
+                    except ApiError as e:
+                        if e.status != 400 or not user_api.request("GET", "/api/alarm/"+ident).get("acknowledged"):
+                            raise
                 response = {"acknowledged":True}
             elif action == "export":
                 require("export" in CAPABILITIES[role],403,"operation denied")
@@ -152,7 +159,7 @@ class FarmApi:
                        else "unknown",{},"DENIED")
             raise
         except ApiError as e:
-            self.audit(actor,station,action,detail,"UPSTREAM_ERROR")
+            self.audit(actor,station,action,{**detail,"upstream_status":e.status},"UPSTREAM_ERROR")
             if e.status in (401,403,404):
                 raise Denied(403,"upstream permission denied") from None
             raise Denied(502,"ThingsBoard rejected request") from None
