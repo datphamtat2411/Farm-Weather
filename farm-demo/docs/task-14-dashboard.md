@@ -9,3 +9,5 @@ python farm-demo/cloud/dashboard.py --url https://localhost:8443 --ca-file /path
 Use the printed dashboard URL under the deployment reverse proxy host, not the loopback address for a remote browser. Start FarmApi and use the existing nginx-farm.conf.example same-origin proxy. All four human roles can read; mutations remain controlled server-side. Native dashboard/widget install is idempotent, scoped to Farm dashboards; never assign an unrelated customer's resource. User-visible commands only show APPLIED from confirmed RPC status. On loss of UI connectivity controls are hidden and prior values labeled stale. No start pump command.
 
 CI development checks native provisioning, scoped data, validity/freshness, controls and browser rendering. Wokwi full hardware acceptance remains Task 17. No claim of live public hosting or physical sensor measurement.
+
+Browser evidence is captured from the actual native dashboard under the isolated ThingsBoard instance (not a mock page). The CI route forwards the existing same-origin FarmApi path to the real TLS service. Production uses nginx as before.

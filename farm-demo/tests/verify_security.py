@@ -64,9 +64,11 @@ def run(url, ca, mqtt_port, audit):
     assert all(created.values())
     assert install_security(admin,topology,emails)[0]==manifest
     clients={}
+    passwords={}
     for name,user in users.items():
         password="Aa1!"+secrets.token_hex(24)
         activate(admin,user,password)
+        passwords[name]=password
         client=Rest(url,ca)
         client.login(emails[name],password)
         assert client.request("GET","/api/auth/user")["id"]["id"]==uid(user)
@@ -150,6 +152,11 @@ def run(url, ca, mqtt_port, audit):
                      lambda ident:call("viewer","rpc_status",{"command_id":ident}),
                      adapter, rpc_db, clients["technician"], station)
             checked("native RPC, durable queue, firmware command result, separate telemetry and client attributes")
+            from verify_dashboard import exercise_dashboard
+            dashboard_report=exercise_dashboard(admin,topology,manifest,clients,emails,passwords,call,adapter,
+                station,url,endpoint,Path(audit).parent)
+            (Path(audit).parent/"dashboard-report.json").write_text(json.dumps(dashboard_report,indent=2))
+            checked("native Dashboard, actual JWT snapshot, responsive Chromium, acknowledgement and RPC admission")
             for name in HUMAN_ROLES:
                 for action,body in [("export",{"startTs":stamp-1000,"endTs":stamp+1000}),
                                     ("ack",{"alarm_id":alarm_id})]:

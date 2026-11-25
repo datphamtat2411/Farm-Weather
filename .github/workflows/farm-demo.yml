@@ -246,7 +246,11 @@ jobs:
           docker compose -f farm-demo/cloud/compose.yml pull
           docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
           docker compose -f farm-demo/cloud/compose.yml up -d
-      - name: Native ThingsBoard JWT RBAC and TLS security
+      - name: Install pinned Chromium browser test runner
+        run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - name: Native ThingsBoard JWT RBAC, TLS security and dashboard browser integration
         run: |
           python farm-demo/tests/verify_security.py --ca "$FARM_TLS_DIR/ca.crt" --audit farm-demo/evidence/security-audit.sqlite > farm-demo/evidence/security-report.json
       - name: Security failure diagnostics

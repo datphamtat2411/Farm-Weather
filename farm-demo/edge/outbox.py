@@ -120,8 +120,10 @@ def store(db, record, metadata, *, budget=BUDGET):
 
 def radio_diagnostics(db):
     result={}
-    for device,raw,received in db.execute("""SELECT device_id,metadata_json,received_at FROM weather_outbox
-        WHERE state!='QUARANTINE' ORDER BY received_at DESC,sequence_number DESC"""):
+    for device,raw,received in db.execute("""SELECT device_id,metadata_json,received_at FROM (
+        SELECT device_id,metadata_json,received_at,ROW_NUMBER() OVER (
+          PARTITION BY device_id ORDER BY received_at DESC,sequence_number DESC) AS n
+        FROM weather_outbox WHERE state!='QUARANTINE') WHERE n=1"""):
         if device in result:
             continue
         metadata=json.loads(raw)
