@@ -18,15 +18,21 @@ class ApiError(RuntimeError):
         super().__init__(f"ThingsBoard HTTP {status}: {method} {path.split('?')[0]}")
         self.status = status
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 class Rest:
     def __init__(self, url, ca_file=None, authorization=None, timeout=10):
         parsed = urllib.parse.urlsplit(url)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("HTTPS endpoint required")
         self.url = url.rstrip("/")
+        self.ca_file = ca_file
         self.context = ssl.create_default_context(cafile=ca_file)
         self.authorization = authorization
         self.timeout = timeout
+        self.opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=self.context), NoRedirect())
 
     def request(self, method, path, data=None, **query):
         suffix = "?" + urllib.parse.urlencode(query) if query else ""
@@ -39,7 +45,7 @@ class Rest:
             body = json.dumps(data, allow_nan=False).encode()
         request = urllib.request.Request(self.url + path + suffix, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, context=self.context, timeout=self.timeout) as response:
+            with self.opener.open(request, timeout=self.timeout) as response:
                 raw = response.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as error:
