@@ -137,10 +137,10 @@ def activate(api, user, password):
 def issue_key(api, user, description):
     # Only a new credential is returned in clear text. Never silently create
     # an extra key on every provision; rotation is explicit.
-    existing = list(page_items(api, f"/apiKeys/{uid(user)}"))
+    existing = list(page_items(api, f"/api/apiKeys/{uid(user)}"))
     if any(k["description"] == description and k["enabled"] for k in existing):
         raise ValueError("API key already exists; use saved secret or explicitly revoke/rotate")
-    return api.request("POST", "/apiKey", {"userId": user["id"], "description": description,
+    return api.request("POST", "/api/apiKey", {"userId": user["id"], "description": description,
         "enabled": True, "expirationTime": int(time.time()*1000) + 30*86400000})
 
 def install_security(api, topology, emails):

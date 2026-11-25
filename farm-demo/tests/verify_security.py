@@ -197,7 +197,7 @@ def run(url, ca, mqtt_port, audit):
                     pass
         reject_connection(wrong_hostname)
     checked("invalid MQTT token; unknown CA and wrong TLS hostname rejected")
-    admin.request("PUT",f"/apiKey/{uid(reader_key)}/enabled/false")
+    admin.request("PUT",f"/api/apiKey/{uid(reader_key)}/enabled/false")
     deny(lambda:reader.request("GET",history))
     checked("API key revoked")
     return {"result":"PASS","scope":"actual non-production ThingsBoard, JWT, native roles and API keys, MQTT/TLS and HTTPS; no physical LoRaWAN or firmware RPC execution claim",
