@@ -1,0 +1,16 @@
+[wokwi]
+version = 1
+firmware = ".pio/build/bluepill_f103c8/firmware.bin"
+elf = ".pio/build/bluepill_f103c8/firmware.elf"
+
+[[chip]]
+name = "bme280"
+binary = "chips/bme280.chip.wasm"
+
+[[chip]]
+name = "wind"
+binary = "chips/wind.chip.wasm"
+
+[[chip]]
+name = "nor"
+binary = "chips/nor.chip.wasm"

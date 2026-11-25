@@ -1,0 +1,299 @@
+name: Farm weather development CI
+on:
+  push:
+    branches: ['demo/farm-weather', 'demo/farm-weather/**', 'demo/task17-fix']
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      scenarios:
+        description: Validated mandatory hardware scenario matrix
+        value: ${{ jobs.native.outputs.scenarios }}
+permissions:
+  contents: read
+concurrency:
+  group: farm-demo-development-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  native:
+    outputs:
+      scenarios: ${{ steps.scenarios.outputs.matrix }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Lint both CI workflows (no Wokwi API)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/farm-demo.yml .github/workflows/farm-demo-acceptance.yml
+      - name: Validate mandatory scenario inventory
+        id: scenarios
+        run: |
+          mkdir -p farm-demo/evidence
+          matrix="$(python farm-demo/ci/scenarios.py matrix)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$matrix" > farm-demo/evidence/scenario-matrix.json
+      - name: Generate official Python Protobuf bindings
+        run: |
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Native logic and negative-control tests
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          python --version > farm-demo/evidence/toolchain.txt
+          g++ --version >> farm-demo/evidence/toolchain.txt
+          # Every added native *_test.cpp participates automatically.
+          for required in weather acquisition alarm power protocol ring; do
+            test -f "farm-demo/tests/${required}_test.cpp"
+          done
+          for source in farm-demo/tests/*_test.cpp; do
+            suite="$(basename "$source" _test.cpp)"
+            logfile="$suite-native.log"
+            if [[ "$suite" == weather ]]; then logfile=native.log; fi
+            g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include "$source" -o "$RUNNER_TEMP/farm-native-test"
+            "$RUNNER_TEMP/farm-native-test" | tee "farm-demo/evidence/$logfile"
+          done
+          python farm-demo/tests/verify_protocol.py native farm-demo/evidence/protocol-native.log > farm-demo/evidence/protocol-report.json
+          python farm-demo/tests/energy_budget.py > farm-demo/evidence/energy-budget.json
+          python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
+      - name: Task 16 configurable scenario console and evidence
+        run: |
+          python farm-demo/demo/run.py --all --output farm-demo/evidence/demo-scenarios
+          python farm-demo/demo/verify.py farm-demo/evidence/demo-scenarios > farm-demo/evidence/task16-report.json
+      - name: Real MQTT Edge integration and SQLite evidence
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends mosquitto
+          python farm-demo/tests/verify_edge_mqtt.py farm-demo/evidence/protocol-native.log farm-demo/evidence/edge.sqlite > farm-demo/evidence/edge-mqtt-report.json
+      - name: D04 offline recovery and Cloud readback integration
+        run: |
+          python farm-demo/tests/verify_sync_mqtt.py farm-demo/evidence/d04-edge.sqlite farm-demo/evidence/d04-cloud.sqlite > farm-demo/evidence/d04-report.json
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: native-evidence
+          path: farm-demo/evidence/
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: warn
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [bluepill_f103c8, nucleo_l476rg]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Build target and record provenance
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          python --version > farm-demo/evidence/toolchain.txt
+          python -m pip install platformio==6.1.18
+          pio --version >> farm-demo/evidence/toolchain.txt
+          pio run -d farm-demo/firmware -e "$TARGET" 2>&1 | tee farm-demo/evidence/build.log
+          pio pkg list -d farm-demo/firmware -e "$TARGET" >> farm-demo/evidence/toolchain.txt
+          cd "farm-demo/firmware/.pio/build/$TARGET"
+          test -s firmware.bin
+          test -s firmware.elf
+          sha256sum firmware.bin firmware.elf > "$GITHUB_WORKSPACE/farm-demo/evidence/firmware-sha256.txt"
+          if [ "$TARGET" = bluepill_f103c8 ]; then
+            cp firmware.bin firmware.elf "$GITHUB_WORKSPACE/farm-demo/evidence/"
+          fi
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: firmware-${{ matrix.target }}
+          path: farm-demo/evidence/
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: warn
+  preflight:
+    name: Wokwi offline preflight (no simulation quota)
+    needs: [native, firmware]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      WOKWI_CLI_TOKEN: ''
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: firmware-bluepill_f103c8
+          path: ${{ runner.temp }}/firmware-wokwi
+      - name: Stage exact firmware
+        run: bash farm-demo/ci/stage-firmware.sh "$RUNNER_TEMP/firmware-wokwi"
+      - name: Install pinned Wokwi CLI (no token)
+        run: bash farm-demo/ci/install-wokwi.sh
+      - name: Compile custom chips and lint diagram without Simulation API
+        working-directory: farm-demo/firmware
+        run: |
+          mkdir -p ../evidence/chips
+          for source in chips/*.chip.c; do
+            wokwi-cli chip compile "$source" -o "${source%.c}.wasm"
+          done
+          wokwi-cli lint 2>&1 | tee ../evidence/diagram-lint.log
+          cp chips/*.chip.wasm ../evidence/chips/
+          (cd ../evidence && sha256sum chips/*.chip.wasm > chips-sha256.txt)
+          git rev-parse HEAD > ../evidence/commit.txt
+          wokwi-cli --version > ../evidence/wokwi-toolchain.txt
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: wokwi-preflight
+          path: farm-demo/evidence/
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+  thingsboard:
+    name: Real ThingsBoard PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FARM_TB_ADMIN_USER: tenant@thingsboard.org
+      FARM_TB_ADMIN_PASSWORD: tenant
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated TLS and PostgreSQL credentials
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          bash farm-demo/cloud/ci-tls.sh "$RUNNER_TEMP/farm-tls"
+          echo "FARM_TLS_DIR=$RUNNER_TEMP/farm-tls" >> "$GITHUB_ENV"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          admin_password="Aa1!$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_password"
+          echo "FARM_CI_SYSADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Install actual ThingsBoard (non-production)
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml pull
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml up -d
+      - name: Real MQTT/TLS and REST readback, D04, restart persistence
+        run: |
+          python farm-demo/tests/verify_thingsboard.py --db farm-demo/evidence/thingsboard-edge.sqlite --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/thingsboard-report.json
+          docker compose -f farm-demo/cloud/compose.yml exec -T postgres psql -U thingsboard -d thingsboard -c 'SELECT version();' > farm-demo/evidence/postgres-version.txt
+          docker image inspect thingsboard/tb-node:4.4.1 --format '{{json .RepoDigests}}' > farm-demo/evidence/thingsboard-image.txt
+      - name: Native ThingsBoard Rule Engine lifecycle and historical isolation
+        run: |
+          python farm-demo/tests/verify_rule_engine.py --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/rule-engine-report.json
+      - name: Rule Engine failure diagnostics
+        if: failure()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml logs --no-color --tail 250 thingsboard | grep -E "ERROR|WARN|Exception|failed" | sed -E 's/(Bearer |token=|password=)[^ ]+/\1[REDACTED]/Ig' || true
+      - name: Stop isolated services
+        if: always()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml down -v
+          rm -rf "$RUNNER_TEMP/farm-tls"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: thingsboard-evidence
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: error
+  security:
+    name: Real ThingsBoard security integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FARM_TB_ADMIN_USER: tenant@thingsboard.org
+      FARM_TB_ADMIN_PASSWORD: tenant
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated TLS and PostgreSQL credentials
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          bash farm-demo/cloud/ci-tls.sh "$RUNNER_TEMP/farm-tls"
+          echo "FARM_TLS_DIR=$RUNNER_TEMP/farm-tls" >> "$GITHUB_ENV"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          admin_password="Aa1!$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_password"
+          echo "FARM_CI_SYSADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Install actual ThingsBoard (non-production)
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml pull
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml up -d
+      - name: Install pinned Chromium browser test runner
+        run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - name: Native ThingsBoard JWT RBAC, TLS security and dashboard browser integration
+        run: |
+          python farm-demo/tests/verify_security.py --ca "$FARM_TLS_DIR/ca.crt" --audit farm-demo/evidence/security-audit.sqlite > farm-demo/evidence/security-report.json
+      - name: Security failure diagnostics
+        if: failure()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml logs --no-color --tail 250 thingsboard | grep -E "ERROR|WARN|Exception|failed" | sed -E 's/(Bearer |token=|password=)[^ ]+/\1[REDACTED]/Ig' || true
+      - name: Stop isolated services
+        if: always()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml down -v
+          rm -rf "$RUNNER_TEMP/farm-tls"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: security-evidence
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: error
+  development_gate:
+    name: Farm development acceptance (no hardware claim)
+    needs: [native, firmware, preflight, thingsboard, security]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all development checks
+        env:
+          NATIVE: ${{ needs.native.result }}
+          FIRMWARE: ${{ needs.firmware.result }}
+          PREFLIGHT: ${{ needs.preflight.result }}
+          THINGSBOARD: ${{ needs.thingsboard.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          printf 'Commit: %s\nNative: %s\nFirmware: %s\nOffline preflight: %s\n' "$GITHUB_SHA" "$NATIVE" "$FIRMWARE" "$PREFLIGHT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo 'Hardware simulation: DEFERRED in this development gate. Separate hardware acceptance is mandatory for Task 17.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Security integration: $SECURITY" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "ThingsBoard integration: $THINGSBOARD" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$PREFLIGHT" != success || "$THINGSBOARD" != success || "$SECURITY" != success ]]; then
+            echo "::error::Mandatory development job failed, was cancelled, or was skipped."
+            exit 1
+          fi
+          echo 'Development checks passed; this is not full product acceptance.' >> "$GITHUB_STEP_SUMMARY"

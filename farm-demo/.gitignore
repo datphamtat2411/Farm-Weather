@@ -1,0 +1,15 @@
+.pio/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+__pycache__/
+serial.log
+evidence/
+.env
+.env.*
+!.env.example
+*.chip.wasm
+edge/weather_pb2.py
+
+*.secret
+**/devices-cloud.json

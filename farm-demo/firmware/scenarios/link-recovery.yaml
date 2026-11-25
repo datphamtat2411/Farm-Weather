@@ -1,0 +1,59 @@
+name: Task 07 D05 link outage, local alarm and replay
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 1
+  - wait-serial: 'LINK_DOWN'
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 27
+  - wait-serial: 'WIND_ALARM_ON'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - delay: 12800ms
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 2
+  - wait-serial: 'ACK_DROP'
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 3
+  - wait-serial: 'LINK_UP'
+  - wait-serial: 'delivered=1'
+  # Observe repeated delivered transmissions before allowing ACKs.
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 4
+  - wait-serial: 'ACK_AUTO'
+  - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1

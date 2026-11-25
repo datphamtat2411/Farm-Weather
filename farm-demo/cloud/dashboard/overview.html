@@ -1,0 +1,29 @@
+<main class="fw-shell" aria-label="FarmWeather">
+  <header class="fw-top"><div><div class="fw-brand">FARM / WEATHER <span>IoT · ĐỀ TÀI 12</span></div><h1>Trạm thời tiết trang trại</h1><p>Giám sát tại chỗ · Dữ liệu ThingsBoard</p></div><div class="fw-select"><label for="fw-station">Trạm quan trắc</label><select id="fw-station"></select><button type="button" id="fw-refresh">Làm mới</button></div></header>
+  <nav class="fw-history-nav" aria-label="Điều hướng"><button type="button" id="fw-overview-tab" aria-pressed="true">Tổng quan</button><button type="button" id="fw-history-tab" aria-pressed="false">Lịch sử &amp; thống kê</button></nav>
+  <div id="fw-overview-view">
+  <div id="fw-error" class="fw-error" role="alert" hidden></div>
+  <section class="fw-status"><div><span class="fw-eyebrow">TRẠNG THÁI DỮ LIỆU</span><strong id="fw-fresh">Đang tải…</strong></div><div><span class="fw-eyebrow">THỜI ĐIỂM ĐO · UTC+7</span><strong id="fw-time">—</strong></div><div><span class="fw-eyebrow">CHU KỲ TRUYỀN</span><strong id="fw-period">—</strong></div><div><span class="fw-eyebrow">VAI TRÒ</span><strong id="fw-role">—</strong></div></section>
+  <section class="fw-grid" aria-label="Thông số thời tiết" id="fw-metrics"></section>
+  <section class="fw-columns"><article class="fw-panel"><h2>Diễn biến nhiệt độ</h2><p>24 giờ gần nhất · theo thời điểm đo</p><svg id="fw-chart" viewBox="0 0 600 180" role="img" aria-label="Biểu đồ nhiệt độ 24 giờ"></svg><p id="fw-trend-note"></p></article><article class="fw-panel"><h2>Hướng gió</h2><div class="fw-compass"><span class="north">B</span><span class="east">Đ</span><span class="south">N</span><span class="west">T</span><div id="fw-arrow" hidden>▲</div></div><strong id="fw-direction">—</strong><p id="fw-rain">Tổng mưa ngày: —</p></article></section>
+  <section class="fw-columns"><article class="fw-panel"><h2>Trạm &amp; Gateway</h2><div id="fw-health" class="fw-pairs"></div></article><article class="fw-panel"><h2>Cảnh báo đang hoạt động</h2><div id="fw-alarms" class="fw-alarms">—</div><h3>Thiết bị chấp hành</h3><div id="fw-outputs" class="fw-pairs"></div><p>Relay chỉ yêu cầu ngừng tưới. Không có lệnh tự bật bơm.</p></article></section>
+  <section class="fw-panel"><h2>Điều khiển &amp; cấu hình trạm</h2><div id="fw-controls" hidden><div class="fw-actions"><button type="button" id="fw-stop" hidden>Yêu cầu ngừng tưới</button><button type="button" id="fw-test" hidden>Kiểm tra còi</button></div><form id="fw-config" hidden><label>Ngưỡng bật gió (m/s)<input name="wind_alarm_on" type="number" min="2" max="10" required></label><label>Ngưỡng xóa gió (m/s)<input name="wind_alarm_off" type="number" min="1" max="9" required></label><label>Chu kỳ truyền<select name="report_period_s"><option value="300">5 phút</option><option value="900">15 phút</option></select></label><button type="submit">Gửi cấu hình</button></form></div><div id="fw-config-state" class="fw-pairs"></div><p id="fw-command" role="status">Chưa gửi lệnh trong phiên này.</p><p>Chỉ xác nhận APPLIED khi trạm phản hồi. Lệnh Class A có thể phải chờ uplink tiếp theo.</p></section>
+</div>
+  <section id="fw-history-view" hidden aria-label="Lịch sử và thống kê">
+    <article class="fw-panel"><h2>Lịch sử thời tiết</h2><p>Thời điểm đo · UTC+7 · Dữ liệu gốc từ ThingsBoard</p>
+      <form id="fw-history-form" class="fw-history-filters">
+        <label>Khoảng thời gian<select name="range"><option value="1">24 giờ</option><option value="7">7 ngày</option><option value="30">30 ngày</option><option value="custom">Tùy chỉnh</option></select></label>
+        <label> Từ (UTC+7)<input name="start" type="datetime-local" required></label>
+        <label> Đến (UTC+7)<input name="end" type="datetime-local" required></label>
+        <button type="submit">Xem thống kê</button><button id="fw-export" type="button" hidden>Xuất CSV</button>
+      </form><p id="fw-history-message" role="status"></p>
+    </article>
+    <div id="fw-history-results" hidden>
+      <section id="fw-history-summary" class="fw-grid"></section>
+      <article class="fw-panel"><h2>Biểu đồ theo thời gian</h2><p id="fw-history-bucket"></p><div id="fw-history-charts" class="fw-history-charts"></div></article>
+      <article class="fw-panel"><h2>Thống kê theo thông số</h2><div class="fw-table-scroll"><table id="fw-history-stats"></table></div><p>Gió trung bình có trọng số theo kỳ, hướng gió trung bình vector. Mưa chỉ cộng các kỳ hợp lệ nằm trọn khoảng. Không nội suy dữ liệu thiếu hoặc kỳ qua ranh giới.</p></article>
+      <article class="fw-panel"><h2>Khoảng thiếu dữ liệu</h2><p id="fw-history-gaps"></p><details id="fw-history-gap-list" hidden></details></article>
+      <article class="fw-panel"><h2>Bản ghi gốc</h2><div class="fw-table-scroll"><table id="fw-history-rows"></table></div><div class="fw-history-pages"><button id="fw-history-prev" type="button">Trước</button><span id="fw-history-page"></span><button id="fw-history-next" type="button">Sau</button></div></article>
+    </div>
+  </section>
+</main>

@@ -1,0 +1,18 @@
+name: Invalid BME280 must not become fresh zero telemetry
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: ambient
+      name: temperature
+      value: 99
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - wait-serial: 'TELEMETRY'
+  - delay: 600ms

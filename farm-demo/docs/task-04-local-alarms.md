@@ -1,0 +1,9 @@
+# Task 04 — Cảnh báo và chấp hành tại trạm
+
+Theo Chương 3 mục 3.4, bảng 3.7 và Chương 6 D02/D03/D05. STM32 xử lý cục bộ, không chờ mạng. Gió >=10 m/s trong cửa sổ 3 s bật yêu cầu ngừng tưới và còi nhịp 2 s bật/1 s tắt (tham số demo). Relay giữ liên tục. Xóa gió chỉ sau 60 s liên tục dưới 7 m/s với cửa sổ hợp lệ. Lỗi gió đã xác định không được coi là gió lặng, giữ cảnh báo cũ và reset thời gian phục hồi. Sau xóa, trạng thái AWAIT_INSPECTION, ngõ relay nhả nhưng tuyệt đối không có ngõ bật bơm. Nút xác nhận kiểm tra trên Wokwi chỉ mô hình hóa thao tác của người vận hành, không điều khiển bơm. Còi/relay là LED mức logic; không kiểm chứng cách ly 12 V, công suất hay an toàn điện.
+
+Mưa 10 phút >=5 mm (18 xung), xóa dưới 2 mm; nhiệt >=35 °C 3 lần đọc phút, xóa <33 °C 3 lần hợp lệ. Hai cảnh báo này chỉ phát sự kiện. Lỗi BME280 từng nhóm, ADC hướng và pin, và chẩn đoán gió mô phỏng có xác nhận 3 lần lỗi/3 lần hợp lệ. Không suy luận lỗi từ không có xung gió/mưa: tiếp điểm khô không phân biệt được đứt dây và lặng gió/không mưa nếu thiếu chẩn đoán bổ sung. Chân FAULT chỉ là đầu vào chẩn đoán mô phỏng. Invalid wind loại bỏ dữ liệu gió của kỳ và không cho xóa cảnh báo.
+
+Bản tin EVENT JSON chứa sequence_number chung với TELEMETRY, ts_s, changed_mask (XOR status trước/sau), status, fault_mask, changed_fault_mask (chuyển trạng thái lỗi từng nhóm), mode, buzzer, stop_request, giá trị gây cảnh báo khi hợp lệ. Các thay đổi cùng tick gộp chung một event. Event không phải lượng mưa kỳ đo. Đây là serial contract chuẩn bị cho Task 06/07, không khẳng định đã truyền RF, lưu Flash hay đồng bộ Cloud. Edge ingestion hiện chỉ nhận TELEMETRY.
+
+CI: native tests kiểm tra biên và invalid wind, hai target build, smoke hiện có và scenario Wokwi riêng kiểm tra gió, lỗi gió, xác nhận, mưa, nhiệt. Artifact chứa serial thực tế và JSON verifier. Task 05 sẽ hoàn thiện nguồn, Task 06 trở đi hoàn thiện giao thức và truyền sự kiện. STM32L476RG vẫn là compile probe.

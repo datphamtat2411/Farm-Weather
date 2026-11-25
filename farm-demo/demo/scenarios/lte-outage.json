@@ -1,0 +1,17 @@
+{
+  "name": "D04 – Mất 4G 6 giờ",
+  "segments": [
+    {
+      "seconds": 21600,
+      "set": {
+        "lte": false
+      }
+    },
+    {
+      "seconds": 120,
+      "set": {
+        "lte": true
+      }
+    }
+  ]
+}

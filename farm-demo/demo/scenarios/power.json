@@ -1,0 +1,30 @@
+{
+  "name": "D06 – Pin yếu và phục hồi",
+  "segments": [
+    {
+      "seconds": 900,
+      "set": {
+        "battery_mv": 2900
+      }
+    },
+    {
+      "seconds": 1,
+      "set": {
+        "battery_mv": 3300,
+        "rain_tips": 1
+      }
+    },
+    {
+      "seconds": 10,
+      "set": {
+        "wind_hz": 27
+      }
+    },
+    {
+      "seconds": 1200,
+      "set": {
+        "wind_hz": 3
+      }
+    }
+  ]
+}

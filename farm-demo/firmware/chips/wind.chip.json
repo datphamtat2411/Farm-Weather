@@ -1,0 +1,28 @@
+{
+  "name": "SEN-15901 anemometer",
+  "author": "Farm Weather",
+  "pins": [
+    "VCC",
+    "GND",
+    "PULSE",
+    "FAULT"
+  ],
+  "controls": [
+    {
+      "id": "frequency",
+      "label": "Wind contact pulses / logical second (1 Hz = 2.4 km/h)",
+      "type": "range",
+      "min": 0,
+      "max": 30,
+      "step": 1
+    },
+    {
+      "id": "fault",
+      "label": "Simulated diagnosed wind input failure (not inferred from calm)",
+      "type": "range",
+      "min": 0,
+      "max": 1,
+      "step": 1
+    }
+  ]
+}

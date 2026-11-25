@@ -1,0 +1,214 @@
+name: Farm weather hardware acceptance (Task 17)
+# Deliberate release request only. Never triggered by ordinary development or PRs.
+on:
+  push:
+    branches: ['demo/acceptance/task-17-*']
+    tags: ['farm-demo-task17-*']
+  workflow_dispatch:
+    inputs:
+      confirm_sha:
+        description: Full SHA of the candidate to validate (must match selected ref)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: farm-demo-hardware-acceptance
+  # A newer explicit candidate supersedes an obsolete SHA before consuming quota.
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  request:
+    name: Confirm explicit hardware acceptance request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm ref and SHA
+        env:
+          CONFIRM_SHA: ${{ inputs.confirm_sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            if [[ "$CONFIRM_SHA" != "$GITHUB_SHA" ]]; then
+              echo "::error::Manual request SHA must match selected ref."
+              exit 1
+            fi
+          else
+            case "$GITHUB_REF" in
+              refs/heads/demo/acceptance/task-17-*|refs/tags/farm-demo-task17-*) ;;
+              *) echo "::error::Not an acceptance ref."; exit 1 ;;
+            esac
+          fi
+          echo "Hardware candidate: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+  development:
+    needs: request
+    uses: ./.github/workflows/farm-demo.yml
+  simulation:
+    name: Wokwi acceptance / ${{ matrix.scenario }}
+    needs: development
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        scenario: ${{ fromJSON(needs.development.outputs.scenarios) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: firmware-bluepill_f103c8
+          path: ${{ runner.temp }}/firmware-wokwi
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: wokwi-preflight
+          path: ${{ runner.temp }}/wokwi-preflight
+      - name: Stage exact firmware and custom chips
+        run: |
+          bash farm-demo/ci/stage-firmware.sh "$RUNNER_TEMP/firmware-wokwi"
+          cmp farm-demo/evidence/commit.txt "$RUNNER_TEMP/wokwi-preflight/commit.txt"
+          (cd "$RUNNER_TEMP/wokwi-preflight" && sha256sum --check chips-sha256.txt)
+          cp "$RUNNER_TEMP/wokwi-preflight"/chips/*.chip.wasm farm-demo/firmware/chips/
+          cp "$RUNNER_TEMP/wokwi-preflight/chips-sha256.txt" farm-demo/evidence/
+          cp "$RUNNER_TEMP/wokwi-preflight/diagram-lint.log" farm-demo/evidence/
+      - name: Install pinned CLI
+        run: bash farm-demo/ci/install-wokwi.sh
+      - name: Generate official Python Protobuf bindings
+        run: |
+          python -m pip install -r farm-demo/protocol/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Execute and verify one mandatory scenario
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: python farm-demo/ci/scenarios.py run "$SCENARIO"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: simulation-${{ matrix.scenario }}-attempt-${{ github.run_attempt }}
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+  hardware_gate:
+    name: Farm hardware acceptance
+    needs: [request, development, simulation]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all hardware and development checks
+        env:
+          REQUEST: ${{ needs.request.result }}
+          DEVELOPMENT: ${{ needs.development.result }}
+          SIMULATION: ${{ needs.simulation.result }}
+        run: |
+          printf 'Candidate: %s\nRequest: %s\nDevelopment: %s\nAll Wokwi scenarios: %s\n' "$GITHUB_SHA" "$REQUEST" "$DEVELOPMENT" "$SIMULATION" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$REQUEST" != success || "$DEVELOPMENT" != success || "$SIMULATION" != success ]]; then
+            echo "::error::Hardware acceptance blocked. A skipped, cancelled, or failed scenario is not a pass."
+            exit 1
+          fi
+          echo 'All registered hardware scenarios passed for this candidate. Recorded-wire replay and product gate are separately required.' >> "$GITHUB_STEP_SUMMARY"
+  replay:
+    name: Wokwi recovered wire to ThingsBoard and browser
+    needs: hardware_gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FARM_TB_ADMIN_USER: tenant@thingsboard.org
+      FARM_TB_ADMIN_PASSWORD: tenant
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated TLS and PostgreSQL credentials
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          bash farm-demo/cloud/ci-tls.sh "$RUNNER_TEMP/farm-tls"
+          echo "FARM_TLS_DIR=$RUNNER_TEMP/farm-tls" >> "$GITHUB_ENV"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          admin_password="Aa1!$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_password"
+          echo "FARM_CI_SYSADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Install actual ThingsBoard (non-production)
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml pull
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml up -d
+      - name: Install pinned Chromium browser test runner
+        run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: simulation-link-recovery-attempt-*
+          path: ${{ runner.temp }}/task17-input
+      - name: Replay actual recovered Wokwi uplinks through Edge and native ThingsBoard UI
+        run: |
+          python farm-demo/tests/verify_task17_replay.py --artifacts "$RUNNER_TEMP/task17-input" --output farm-demo/evidence --ca "$FARM_TLS_DIR/ca.crt" --sha "$GITHUB_SHA" > farm-demo/evidence/task17-replay.json
+      - name: Replay failure diagnostics
+        if: failure()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml logs --no-color --tail 250 thingsboard | grep -E "ERROR|WARN|Exception|failed" | sed -E 's/(Bearer |token=|password=)[^ ]+/\1[REDACTED]/Ig' || true
+      - name: Stop isolated services
+        if: always()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml down -v
+          rm -rf "$RUNNER_TEMP/farm-tls"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: task17-replay-evidence-attempt-${{ github.run_attempt }}
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: error
+  product_gate:
+    name: Farm demo product acceptance D01-D07
+    needs: [hardware_gate, replay]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require every mandatory job
+        env:
+          HARDWARE: ${{ needs.hardware_gate.result }}
+          REPLAY: ${{ needs.replay.result }}
+        run: |
+          if [[ "$HARDWARE" != success || "$REPLAY" != success ]]; then
+            echo "::error::Product acceptance blocked (hardware=$HARDWARE replay=$REPLAY)."
+            exit 1
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          path: ${{ runner.temp }}/task17-evidence
+      - name: Validate evidence and produce handover manifest
+        run: |
+          mkdir -p farm-demo/handover
+          python farm-demo/ci/product_acceptance.py "$RUNNER_TEMP/task17-evidence" "$GITHUB_SHA" farm-demo/handover
+          cat farm-demo/handover/acceptance.md >> "$GITHUB_STEP_SUMMARY"
+          cp farm-demo/docs/task-17-handover.md farm-demo/handover/
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: farm-demo-task17-handover-attempt-${{ github.run_attempt }}
+          path: farm-demo/handover/
+          retention-days: 90
+          if-no-files-found: error

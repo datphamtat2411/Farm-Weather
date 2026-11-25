@@ -1,0 +1,72 @@
+syntax = "proto2";
+package farm.wire.v1;
+
+// FPort 10, Chapter 4 Table 4.2. Device identity is transport metadata.
+// Optional measurements are present exactly when their valid_mask bit is set.
+message WeatherRecord {
+  required uint32 sequence_number = 1;
+  required uint32 ts_s = 2;
+  required uint32 period_s = 3;
+  optional sint32 temp_x10 = 4;
+  optional uint32 humidity_x10 = 5;
+  optional uint32 pressure_x10 = 6;
+  optional uint32 wind_x10 = 7;
+  optional uint32 gust_x10 = 8;
+  optional uint32 direction_deg = 9;
+  optional uint32 rain_tips = 10;
+  optional uint32 battery_mv = 11;
+  required uint32 status = 12;
+  required uint32 valid_mask = 13;
+}
+
+// FPort 11. One snapshot per logical second, same sequence namespace.
+// Chapter 4 specifies event semantics, not field numbers; these are v1.
+message WeatherEvent {
+  enum Mode { NORMAL = 0; ALARM = 1; AWAIT_INSPECTION = 2; }
+  required uint32 sequence_number = 1;
+  required uint32 ts_s = 2;
+  required uint32 changed_mask = 3;
+  required uint32 status = 4;
+  required uint32 requested_period_s = 5;
+  required uint32 fault_mask = 6;
+  required uint32 changed_fault_mask = 7;
+  required Mode mode = 8;
+  required bool buzzer = 9;
+  required bool stop_request = 10;
+  optional uint32 wind_window_x10 = 11;
+  required uint32 rain_10min_tips = 12;
+  optional sint32 temp_x10 = 13;
+  optional uint32 battery_mv = 14;
+}
+
+// FPort 20: explicit application-level acknowledgements, never cumulative.
+message WeatherAck {
+  repeated uint32 sequence_number = 1 [packed = false];
+}
+
+// FPort 21: server-side RPC downlink (UUID bytes, UTC seconds).
+message FarmCommand {
+  required bytes command_id = 1;
+  required uint32 created_at_s = 2;
+  required uint32 expires_at_s = 3;
+  required uint32 method = 4;
+  optional uint32 config_version = 5;
+  optional uint32 wind_alarm_on = 6;
+  optional uint32 wind_alarm_off = 7;
+  optional uint32 report_period_s = 8;
+  required uint32 ack_sequence = 9;
+}
+// FPort 22: confirmed device response, independent of weather telemetry.
+message CommandResult {
+  required uint32 sequence_number = 1;
+  required fixed32 ts_s = 2;
+  required bytes command_id = 3;
+  required uint32 outcome = 4;
+  required uint32 reason = 5;
+  required uint32 config_version = 6;
+  required uint32 wind_alarm_on = 7;
+  required uint32 wind_alarm_off = 8;
+  required uint32 report_period_s = 9;
+  required uint32 applied_period_s = 10;
+  required uint32 outputs = 11;
+}

@@ -1,0 +1,54 @@
+name: Task 05 low battery and recovery across complete reporting windows
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.44
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 3
+  - wait-serial: 'TELEMETRY'
+  - wait-serial: 'TELEMETRY'
+  - wait-serial: 'TELEMETRY'
+  - delay: 40ms
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 40ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 27
+  - wait-serial: 'WIND_ALARM_ON'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 3
+  - wait-serial: 'WIND_ALARM_OFF'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
+  - wait-serial: 'TELEMETRY'
+  - wait-serial: 'TELEMETRY'
+  - delay: 600ms

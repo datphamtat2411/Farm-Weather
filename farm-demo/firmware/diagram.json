@@ -1,0 +1,349 @@
+{
+  "version": 1,
+  "author": "Farm Weather Demo",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-stm32-bluepill",
+      "id": "mcu",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "direction",
+      "top": -140,
+      "left": 180,
+      "attrs": {
+        "value": "184"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "battery",
+      "top": -140,
+      "left": 280,
+      "attrs": {
+        "value": "517"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "rain",
+      "top": 200,
+      "left": 200,
+      "attrs": {
+        "color": "blue",
+        "label": "Rain tip",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "alarm",
+      "top": 180,
+      "left": 350,
+      "attrs": {
+        "color": "red",
+        "label": "Buzzer output (logic)"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "relay",
+      "top": 180,
+      "left": 450,
+      "attrs": {
+        "color": "yellow",
+        "label": "Isolated relay request (logic)"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 245,
+      "left": 350,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 245,
+      "left": 450,
+      "attrs": {
+        "value": "330"
+      }
+    },
+    {
+      "type": "chip-bme280",
+      "id": "ambient",
+      "top": -155,
+      "left": 310,
+      "attrs": {
+        "temperature": "29.5",
+        "humidity": "78",
+        "pressure": "1008.4"
+      }
+    },
+    {
+      "type": "chip-wind",
+      "id": "wind",
+      "top": -30,
+      "left": 310,
+      "attrs": {
+        "frequency": "6"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "confirm",
+      "top": 270,
+      "left": 200,
+      "attrs": {
+        "color": "green",
+        "label": "Inspection acknowledged",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "chip-nor",
+      "id": "flash",
+      "top": 90,
+      "left": 310,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "i2c_scl_pull",
+      "top": -60,
+      "left": 430,
+      "attrs": {
+        "value": "4700"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "i2c_sda_pull",
+      "top": -30,
+      "left": 430,
+      "attrs": {
+        "value": "4700"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "direction:SIG",
+      "mcu:A0",
+      "green",
+      []
+    ],
+    [
+      "direction:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "direction:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "battery:SIG",
+      "mcu:A1",
+      "green",
+      []
+    ],
+    [
+      "battery:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "battery:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "rain:1.l",
+      "mcu:B1",
+      "green",
+      []
+    ],
+    [
+      "rain:2.l",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "mcu:B8",
+      "r1:1",
+      "green",
+      []
+    ],
+    [
+      "r1:2",
+      "alarm:A",
+      "green",
+      []
+    ],
+    [
+      "alarm:C",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "mcu:B9",
+      "r2:1",
+      "green",
+      []
+    ],
+    [
+      "r2:2",
+      "relay:A",
+      "green",
+      []
+    ],
+    [
+      "relay:C",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "mcu:A9",
+      "$serialMonitor:RX",
+      "green",
+      []
+    ],
+    [
+      "mcu:A10",
+      "$serialMonitor:TX",
+      "green",
+      []
+    ],
+    [
+      "ambient:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "ambient:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ambient:SCL",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "ambient:SDA",
+      "mcu:B7",
+      "green",
+      []
+    ],
+    [
+      "wind:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "wind:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "wind:PULSE",
+      "mcu:B0",
+      "green",
+      []
+    ],
+    [
+      "confirm:1.l",
+      "mcu:B12",
+      "green",
+      []
+    ],
+    [
+      "confirm:2.l",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "wind:FAULT",
+      "mcu:B10",
+      "orange",
+      []
+    ],
+    [
+      "flash:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "flash:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "flash:SCL",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "flash:SDA",
+      "mcu:B7",
+      "green",
+      []
+    ],
+    [
+      "i2c_scl_pull:1",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "i2c_scl_pull:2",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "i2c_sda_pull:1",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "i2c_sda_pull:2",
+      "mcu:B7",
+      "green",
+      []
+    ],
+    [
+      "flash:COMMAND_READY",
+      "mcu:B11",
+      "purple",
+      []
+    ]
+  ]
+}

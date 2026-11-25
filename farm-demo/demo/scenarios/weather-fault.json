@@ -1,0 +1,61 @@
+{
+  "name": "D02/D03 – Gió mạnh, mưa, nhiễu, lỗi cảm biến",
+  "segments": [
+    {
+      "seconds": 5,
+      "set": {}
+    },
+    {
+      "seconds": 10,
+      "set": {
+        "wind_hz": 27
+      }
+    },
+    {
+      "seconds": 5,
+      "set": {
+        "wind_ok": false
+      }
+    },
+    {
+      "seconds": 65,
+      "set": {
+        "wind_ok": true,
+        "wind_hz": 3
+      }
+    },
+    {
+      "seconds": 1,
+      "set": {
+        "confirm": true
+      }
+    },
+    {
+      "seconds": 18,
+      "set": {
+        "rain_tips": 1,
+        "noise": true
+      }
+    },
+    {
+      "seconds": 190,
+      "set": {
+        "temperature": 40,
+        "ambient_ok": false
+      }
+    },
+    {
+      "seconds": 190,
+      "set": {
+        "ambient_ok": true
+      }
+    },
+    {
+      "seconds": 620,
+      "set": {
+        "temperature": 25,
+        "noise": false
+      }
+    }
+  ]
+}

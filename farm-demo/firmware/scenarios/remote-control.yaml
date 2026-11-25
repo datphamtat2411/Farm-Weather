@@ -1,0 +1,98 @@
+name: Task 13 device command acceptance, replay and expiry
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 3
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 5
+  - wait-serial: 'ACK_MANUAL'
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 6
+  - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - delay: 160ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 7
+  - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
+  - wait-serial: 'RPC_RESULT outcome=4 reason=6 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 8
+  - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 9
+  - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
+  - wait-serial: 'RPC_RESULT outcome=3 reason=4 version=1'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 10
+  - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
+  - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=2'
+  - set-control:
+      part-id: flash
+      name: scenarioCommand
+      value: 4
+  - wait-serial: 'ACK_AUTO'
+  - wait-serial: 'RADIO_TX seq=6 fcnt=6 fport=22'
+  - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 1
+  - wait-serial: 'REMOTE_STOP_RELEASED'
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 0
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
+  - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'
+  - delay: 100ms

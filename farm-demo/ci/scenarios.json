@@ -1,0 +1,100 @@
+[
+  {
+    "id": "weather",
+    "timeout_ms": 90000,
+    "serial": "serial.log",
+    "console": "wokwi.log",
+    "checks": [
+      {
+        "script": "verify_smoke.py",
+        "args": [
+          "serial.log",
+          "weather.sqlite"
+        ],
+        "report": "smoke.json"
+      },
+      {
+        "script": "verify_hardware.py",
+        "args": [
+          "smoke.json"
+        ],
+        "report": "hardware.json"
+      }
+    ]
+  },
+  {
+    "id": "invalid-ambient",
+    "timeout_ms": 90000,
+    "serial": "invalid-ambient.log",
+    "console": "invalid-ambient-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_invalid_ambient.py",
+        "args": [
+          "invalid-ambient.log"
+        ],
+        "report": "invalid-ambient.json"
+      }
+    ]
+  },
+  {
+    "id": "local-alarms",
+    "timeout_ms": 90000,
+    "serial": "local-alarms.log",
+    "console": "local-alarms-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_alarms.py",
+        "args": [
+          "local-alarms.log"
+        ],
+        "report": "local-alarms.json"
+      }
+    ]
+  },
+  {
+    "id": "power",
+    "timeout_ms": 150000,
+    "serial": "power.log",
+    "console": "power-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_power.py",
+        "args": [
+          "power.log"
+        ],
+        "report": "power.json"
+      }
+    ]
+  },
+  {
+    "id": "link-recovery",
+    "timeout_ms": 90000,
+    "serial": "link-recovery.log",
+    "console": "link-recovery-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_link.py",
+        "args": [
+          "link-recovery.log"
+        ],
+        "report": "link-recovery.json"
+      }
+    ]
+  },
+  {
+    "id": "remote-control",
+    "timeout_ms": 90000,
+    "serial": "remote-control.log",
+    "console": "remote-control-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_remote_control.py",
+        "args": [
+          "remote-control.log"
+        ],
+        "report": "remote-control.json"
+      }
+    ]
+  }
+]

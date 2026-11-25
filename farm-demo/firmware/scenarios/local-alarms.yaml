@@ -1,0 +1,263 @@
+name: Task 04 local alarms and fault recovery
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 27
+  - wait-serial: 'WIND_ALARM_ON'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: wind
+      name: fault
+      value: 1
+  - delay: 2800ms
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 3
+  - set-control:
+      part-id: wind
+      name: fault
+      value: 0
+  - wait-serial: 'WIND_ALARM_OFF'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 1
+  - wait-serial: 'INSPECTION_CONFIRMED'
+  - set-control:
+      part-id: confirm
+      name: pressed
+      value: 0
+  - set-control:
+      part-id: ambient
+      name: temperature
+      value: 40
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 10ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - delay: 10ms
+  - delay: 7600ms
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
+  - set-control:
+      part-id: ambient
+      name: temperature
+      value: 25
+  - delay: 8000ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - delay: 10400ms
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
