@@ -1,5 +1,7 @@
 var state;
-if (metadata.farm_route === 'health') {
+if (metadata.farm_route === 'tick') {
+    state = {farm_watchdog_ts: Number(metadata.farm_ts)};
+} else if (metadata.farm_route === 'health') {
     state = {farm_health_ts: Number(metadata.farm_ts), farm_buffer_warning: metadata.farm_buffer === 'true'};
 } else if (metadata.farm_route === 'periodic') {
     state = {farm_periodic_seq: Number(metadata.farm_seq), farm_periodic_ts: Number(metadata.farm_ts)};

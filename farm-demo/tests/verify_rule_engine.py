@@ -71,11 +71,16 @@ def run(url, ca, port):
     # in the disposable CI instance. No telemetry heartbeat or station token.
     scheduler_id=topology["rule_chains"]["watchdog"]
     scheduler=api.request("GET","/api/schedulerEvent/"+scheduler_id)
-    scheduler["schedule"]["startTime"]=int(time.time()*1000)+2000
-    scheduler["schedule"]["repeat"]["repeatInterval"]=2
-    api.request("POST","/api/schedulerEvent",scheduler)
+    assert scheduler["schedule"]["repeat"]["repeatInterval"]==60
     def tick():
-        time.sleep(3)
+        # Schedule the next actual execution soon, without violating the
+        # platform's minimum 60-second recurring interval.
+        current=api.request("GET","/api/schedulerEvent/"+scheduler_id)
+        start=int(time.time()*1000)+3000
+        current["schedule"]["startTime"]=start
+        api.request("POST","/api/schedulerEvent",current)
+        eventually(lambda: int(attributes(station).get("farm_watchdog_ts",0))>=start,
+                   "native scheduler execution")
     def health(percent):
         adapter.publish_health(dict(disk_bytes=percent,budget_bytes=100,pending=2,
             oldest_age_ms=1000,state="ONLINE"),int(time.time()*1000))
@@ -112,10 +117,10 @@ def run(url, ca, port):
         evidence.append({"case":"clear and late live replay cannot re-raise","result":"PASS"})
         # Inject only the persisted measurement age, not a fake Alarm. Exercise
         # actual rule nodes without sleeping 30 minutes.
-        set_age(590000,300); tick(); time.sleep(1); expect(station,{})
+        set_age(570000,300); tick(); expect(station,{})
         set_age(601000,300); tick(); expect(station,{"DATA_STALE":"MAJOR"})
         send(0); expect(station,{})
-        set_age(1790000,900); tick(); time.sleep(1); expect(station,{})
+        set_age(1770000,900); tick(); expect(station,{})
         set_age(1801000,900); tick(); expect(station,{"DATA_STALE":"MAJOR"})
         send(0,period=900); expect(station,{})
         evidence.append({"case":"stale watchdog at 10/30 minutes and fresh recovery","result":"PASS","time_acceleration":"server-side measurement watermark aged in disposable test"})

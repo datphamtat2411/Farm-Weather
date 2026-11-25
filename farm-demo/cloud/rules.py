@@ -130,6 +130,7 @@ def graph(chain_id, root_id, notify, *, gateway=False):
     g.link(start,tail)
     state = g.transform("Build server-side current state", (ROOT/"scripts/state.js").read_text(),3260,780)
     update_latest = g.switch("Publish latest before committing cursor","return [metadata.farm_save];",3200,900)
+    g.link(tail,state,"tick")
     g.link(tail,update_latest,"persist")
     if not gateway:
         g.link(route,update_latest,"periodic")
@@ -141,7 +142,9 @@ def graph(chain_id, root_id, notify, *, gateway=False):
         "sendAttributesUpdatedNotification":False,"updateAttributesOnlyOnValueChange":True},3,3500,780)
     g.link(state,attr)
     restore = g.transform("Restore clean telemetry","return {msg: JSON.parse(metadata.farm_original), metadata: metadata, msgType: 'POST_TELEMETRY_REQUEST'};",3740,780)
-    g.link(attr,restore)
+    after = g.switch("Watchdog complete or restore measurement", "return [metadata.farm_route === 'tick' ? 'done' : 'record'];",3660,900)
+    g.link(attr,after)
+    g.link(after,restore,"record")
     # Historical readback is the Edge commit signal: write history last.
     g.link(restore,historic)
     return dict(ruleChainId=chain_id, firstNodeIndex=entry,nodes=g.nodes,connections=g.links)
@@ -203,9 +206,9 @@ def ensure_watchdog(api, station_id):
         if not event["enabled"] or event["schedule"]["repeat"]["endsOn"] <= int(time.time()*1000):
             raise ValueError("watchdog disabled or expired")
         return event
-    start = int(time.time()*1000)+30000
+    start = int(time.time()*1000)+60000
     return api.request("POST", "/api/schedulerEvent", {"name": name, "type": "FARM_WATCHDOG",
         "enabled": True, "configuration": configuration,
         "schedule": {"timezone": "UTC", "startTime": start,
-                     "repeat": {"type": "TIMER", "repeatInterval": 30, "timeUnit": "SECONDS",
+                     "repeat": {"type": "TIMER", "repeatInterval": 60, "timeUnit": "SECONDS",
                                 "endsOn": start+365*86400000}}})
