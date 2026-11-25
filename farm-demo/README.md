@@ -17,3 +17,7 @@ The farm-demo directory contains standalone project-specific firmware, tests and
 Select the best solution for the project. Avoid bare-minimum solutions or lazy shortcuts that only aim to get the task done with the least effort. Prefer verified, maintainable changes that preserve the report's architecture. Never disable a failing check merely to turn CI green; diagnose the failure and resolve its cause. Review scope and provenance explicitly. A task is done only after the full acceptance gate for its current commit passes.
 
 See [Task 02 hardware model](docs/task-02-hardware.md) for controls and evidence.
+
+## Task 03 — sensor acquisition
+
+The common sensor-processing core implements report Ch.3 table 3.5/3.6: pulse debounce, wind/rain windows, BME280 range/Median-3/fault recovery, ADC Median-5, SEN-15901 resistive direction lookup/vector average, and valid_mask-aware telemetry. See [engineering notes](docs/task-03-acquisition.md). The simulator uses 10x logical time; a physical STM32L476RG build is a non-deployable compile probe only. Separate GitHub Actions evidence covers real Wokwi invalid BME280 readings.

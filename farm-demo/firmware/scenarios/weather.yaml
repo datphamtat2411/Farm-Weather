@@ -21,11 +21,11 @@ steps:
   - set-control:
       part-id: direction
       name: position
-      value: 0.375
+      value: 0.1803
   - set-control:
       part-id: battery
       name: position
-      value: 0.7
+      value: 0.505
   - delay: 500ms
   - expect-pin:
       part-id: mcu
