@@ -72,8 +72,15 @@ def assign(api, customer, typ, ident, target):
         api.request("POST", f"/api/entityGroup/{uid(target)}/addEntities", [ident])
 
 def role(api, customer, name, kind, permissions):
+    # Tenant /api/roles only lists tenant-owned roles, not customer roles.
+    # Resolve customer-owned role IDs through the customer's native group grants.
+    # This also works across repeated provisioning, without impersonation or DB access.
+    role_ids = set()
+    for ug in api.request("GET", f"/api/entityGroups/CUSTOMER/{uid(customer)}/USER"):
+        for grant in api.request("GET", f"/api/userGroup/{uid(ug)}/groupPermissions"):
+            role_ids.add(grant["roleId"]["id"])
     existing = unique(
-        (x for x in page_items(api, "/api/roles", textSearch=name)
+        (x for x in (api.request("GET", f"/api/role/{ident}") for ident in sorted(role_ids))
          if (x.get("customerId") or {}).get("id") == uid(customer)), "name", name)
     if existing is None:
         return api.request("POST", "/api/role",
