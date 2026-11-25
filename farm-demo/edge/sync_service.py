@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from outbox import connect
+from outbox import connect, radio_diagnostics
 from cloud import MqttRestCloud
 from sync import Synchronizer, CloudUnavailable
 import rpc
@@ -61,6 +61,7 @@ def main():
                     next_rpc=now+1000
                 if worker.connected and now>=next_health:
                     try:
+                        health['radio_diagnostics']={devices[name]:value for name,value in radio_diagnostics(db).items() if name in devices}
                         cloud.publish_health(health,now)
                     except CloudUnavailable:
                         worker.offline(now)

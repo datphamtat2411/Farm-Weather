@@ -118,6 +118,19 @@ def store(db, record, metadata, *, budget=BUDGET):
         raise
     return result
 
+def radio_diagnostics(db):
+    result={}
+    for device,raw,received in db.execute("""SELECT device_id,metadata_json,received_at FROM weather_outbox
+        WHERE state!='QUARANTINE' ORDER BY received_at DESC,sequence_number DESC"""):
+        if device in result:
+            continue
+        metadata=json.loads(raw)
+        receivers=metadata.get("receivers") or []
+        best=max(receivers,key=lambda item:item["rssi"]) if receivers else {}
+        result[device]={"rssi":best.get("rssi"),"snr":best.get("snr"),
+                        "received_at":received,"simulated":metadata.get("simulated") is True}
+    return result
+
 def diagnostics(db, *, clock_ms=None, budget=BUDGET):
     clock_ms = now_ms() if clock_ms is None else clock_ms
     used = disk_bytes(db)

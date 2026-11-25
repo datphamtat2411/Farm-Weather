@@ -117,7 +117,8 @@ class MqttRestCloud:
         self.send("v1/devices/me/telemetry", {"ts": now, "values": {
             "farm_health": True, "disk_bytes": health["disk_bytes"],
             "budget_bytes": health["budget_bytes"], "pending": health["pending"],
-            "oldest_age_ms": health["oldest_age_ms"] or 0, "link_state": health["state"]}})
+            "oldest_age_ms": health["oldest_age_ms"] or 0, "link_state": health["state"],
+            "radio_diagnostics": json.dumps(health.get("radio_diagnostics",{}),sort_keys=True,allow_nan=False)}})
 
     def read(self,payload):
         if not self.ready.is_set():

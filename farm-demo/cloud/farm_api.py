@@ -26,7 +26,7 @@ CAPABILITIES = {
     "viewer": frozenset(),
 }
 HISTORY_KEYS = "record_id,sequence_number,temperature,humidity,pressure,wind_speed,wind_gust,wind_direction,rainfall,battery_voltage,period_s,status,valid_mask"
-ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc|rpc_status)$")
+ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc|rpc_status|overview)$")
 
 class Denied(Exception):
     def __init__(self, status, message):
@@ -137,6 +137,11 @@ class FarmApi:
         try:
             user_api, actor, role = self.principal(authorization, station)
             require(isinstance(body, dict), 400, "object required")
+            if action == "overview":
+                require(not body,400,"overview takes no parameters")
+                from overview import overview
+                return {**overview(user_api,station,self.manifest["gateway"],int(time.time()*1000)),
+                        "role":role,"capabilities":sorted(CAPABILITIES[role])}
             if action == "rpc_status":
                 return self.status(user_api,station,body)
             if action == "rpc":
