@@ -1,0 +1,10 @@
+# Farm Weather – Đề tài 12
+
+MVP cho báo cáo trạm thời tiết mini. Mã nguồn tách khỏi ThingsBoard có sẵn.
+- firmware: STM32F103C8 (Blue Pill) là target mô phỏng Wokwi, không phải STM32L476RG của thiết kế thực tế.
+- Sáu biến trở mô phỏng dữ liệu BME280 (3 biến), gió (tần số xung tổng hợp), hướng gió và điện áp pin. Nút nhấn mô phỏng tiếp điểm gầu mưa có chống dội. Hai LED đại diện còi/relay yêu cầu ngừng tưới, không điều khiển bơm.
+- Một giây logic = 100 ms mô phỏng. Cửa sổ, chu kỳ và ngưỡng giữ theo Chương 3–6. Timestamp cố định + thời gian logic là dữ liệu thử nghiệm.
+- edge: SQLite outbox nhận JSON từ log; chống trùng theo device_id + sequence_number, phát hiện xung đột. Chưa triển khai RF/LoRaWAN, Protobuf, ACK từ STM32, Flash bền vững, đồng bộ ThingsBoard hay Dashboard.
+- Chưa xác minh Stop 2, mức dòng điện, cảm biến BME280 thật hoặc an toàn điện bằng Wokwi.
+- Các bước CI: native test, build PlatformIO, chạy Wokwi scenario và kiểm tra log (cần WOKWI_CLI_TOKEN), thử nhập bản ghi log vào SQLite.
+- Không lưu token vào mã nguồn. Đặt WOKWI_CLI_TOKEN tại Settings > Secrets and variables > Actions.

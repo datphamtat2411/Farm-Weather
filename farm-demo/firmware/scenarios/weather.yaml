@@ -1,0 +1,25 @@
+name: Weather station alarm and rain
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: wind
+      name: position
+      value: 0.9
+  - wait-serial: 'WIND_ALARM_ON'
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 1
+  - delay: 150ms
+  - set-control:
+      part-id: rain
+      name: pressed
+      value: 0
+  - wait-serial: 'RAIN_TIPS=1'
+  - set-control:
+      part-id: wind
+      name: position
+      value: 0.1
+  - wait-serial: 'WIND_ALARM_OFF'
+  - wait-serial: 'TELEMETRY'

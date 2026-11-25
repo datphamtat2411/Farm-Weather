@@ -1,0 +1,6 @@
+.pio/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+__pycache__/
+serial.log
