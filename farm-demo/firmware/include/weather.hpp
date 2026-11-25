@@ -31,11 +31,12 @@ struct LocalActuation {
     bool buzzer=false,stopRequest=false;
     // Nonblocking two seconds on / one second off, logical time.
     void update(uint32_t now,unsigned status,bool windReady,bool confirm=false) {
+        const bool alreadyAwaiting=mode==LocalMode::AwaitInspection;
         if(status&WIND){
             if(mode!=LocalMode::Alarm)alarmStarted=now;
             mode=LocalMode::Alarm;
         } else if(mode==LocalMode::Alarm && windReady) mode=LocalMode::AwaitInspection;
-        if(mode==LocalMode::AwaitInspection && confirm && windReady && !(status&WIND))
+        if(alreadyAwaiting && mode==LocalMode::AwaitInspection && confirm && windReady && !(status&WIND))
             mode=LocalMode::Normal;
         stopRequest=mode==LocalMode::Alarm;
         buzzer=stopRequest && (uint32_t(now-alarmStarted)%3<2);

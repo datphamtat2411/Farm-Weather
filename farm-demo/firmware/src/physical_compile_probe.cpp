@@ -8,6 +8,7 @@
 // Compile/link only. No synthetic sensor values are presented as physical data.
 // No GPIO, actuator, serial, RF or flash access. Real drivers belong to Tasks 02+.
 farm::Station probe;
+farm::LocalActuation localAlarmProbe;
 farm::AmbientProcessor pipeline;
 farm::DirectionAccumulator direction;
 volatile unsigned probe_direction;
@@ -18,6 +19,7 @@ void setup() {
     direction.add(0);direction.add(45);
     unsigned angle=0;
     if(direction.mean(angle))probe_direction=angle;
-    compile_probe_status=probe.status;
+    localAlarmProbe.update(probe.seconds,probe.status,probe.windReady);
+    compile_probe_status=probe.status | unsigned(localAlarmProbe.stopRequest);
 }
 void loop() {}

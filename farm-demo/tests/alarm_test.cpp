@@ -18,7 +18,7 @@ int main(){
     tick(0);tick(0);assert(s.quiet==0);tick(0);assert(s.quiet==1);
     for(int i=0;i<58;++i)tick(0);
     assert(s.quiet==59&&a.stopRequest);
-    tick(0);assert(!(s.status&WIND)&&!a.stopRequest&&!a.buzzer);
+    tick(0,true,true);assert(!(s.status&WIND)&&!a.stopRequest&&!a.buzzer); // a simultaneous press cannot skip inspection
     assert(a.mode==LocalMode::AwaitInspection);
     tick(0,false,true);assert(a.mode==LocalMode::AwaitInspection);
     tick(0);tick(0);tick(0,true,true);assert(a.mode==LocalMode::Normal);

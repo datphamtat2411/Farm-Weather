@@ -40,7 +40,7 @@ steps:
       name: frequency
       value: 27
   - wait-serial: 'WIND_ALARM_ON'
-  - delay: 150ms
+  - delay: 30ms
   - expect-pin:
       part-id: mcu
       name: B8

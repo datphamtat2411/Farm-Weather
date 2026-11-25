@@ -21,7 +21,7 @@ volatile uint32_t lastTip=0,lastWind=0;
 volatile bool seenTip=false,seenWind=false;
 farm::SimI2c sensorBus(sda,scl);
 farm::AmbientSensor ambient(sensorBus);
-unsigned sequence=0,prevStatus=0,totalTips=0;
+unsigned sequence=0,prevStatus=0,prevFaultMask=0,totalTips=0;
 uint32_t nextTick;
 unsigned batteryMv=3200;
 bool batteryValid=true, directionValid=false;
@@ -122,7 +122,7 @@ const char* modeName(){
         default:return "NORMAL";
     }
 }
-void emitEvent(unsigned changed){
+void emitEvent(unsigned changed,unsigned changedFaults){
     // One snapshot per logical second, including simultaneous transitions.
     // Shared sequence namespace with periodic records; no periodic rain increment.
     auto& s=WeatherSerial;
@@ -131,6 +131,7 @@ void emitEvent(unsigned changed){
     s.print(",\"changed_mask\":");s.print(changed);
     s.print(",\"status\":");s.print(station.status);
     s.print(",\"fault_mask\":");s.print(faultMask());
+    s.print(",\"changed_fault_mask\":");s.print(changedFaults);
     s.print(",\"mode\":\"");s.print(modeName());s.print("\"");
     s.print(",\"buzzer\":");s.print(actuation.buzzer?"true":"false");
     s.print(",\"stop_request\":");s.print(actuation.stopRequest?"true":"false");
@@ -169,7 +170,8 @@ void loop(){
     if(station.seconds%farm::design::ambient_period_s==0)readAmbient();
     if(station.seconds%farm::design::direction_period_s==0)sampleDirection();
     if(station.seconds%farm::design::normal_period_s==0)sampleBattery();
-    station.sensorFault(faultMask()!=0);
+    const unsigned faults=faultMask();
+    station.sensorFault(faults!=0);
     const bool pressed=!digitalRead(confirm_button);
     const auto before=actuation.mode;
     actuation.update(station.seconds,station.status,station.windReady,pressed&&!confirmWasPressed);
@@ -177,7 +179,9 @@ void loop(){
     digitalWrite(buzzer,actuation.buzzer?HIGH:LOW);
     digitalWrite(relay,actuation.stopRequest?HIGH:LOW);
     const unsigned changed=station.status^prevStatus;
-    if(changed || before!=actuation.mode)emitEvent(changed);
+    const unsigned changedFaults=prevFaultMask^faults;
+    if(changed || changedFaults || before!=actuation.mode)emitEvent(changed,changedFaults);
+    prevFaultMask=faults;
     if(changed&farm::WIND)
         WeatherSerial.println(station.status&farm::WIND?"WIND_ALARM_ON":"WIND_ALARM_OFF");
     prevStatus=station.status;
