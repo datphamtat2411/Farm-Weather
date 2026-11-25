@@ -1,0 +1,48 @@
+# Isolated non-production ThingsBoard deployment; no public plaintext ports.
+services:
+  postgres:
+    image: postgres:16.11
+    environment:
+      POSTGRES_DB: thingsboard
+      POSTGRES_USER: thingsboard
+      POSTGRES_PASSWORD: ${FARM_DB_PASSWORD:?set FARM_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thingsboard -d thingsboard"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  thingsboard:
+    image: thingsboard/tb-node:4.4.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FARM_HTTPS_PORT:-8443}:8080"
+      - "127.0.0.1:${FARM_MQTTS_PORT:-8883}:8883"
+    environment:
+      TB_SERVICE_ID: farm-tb
+      NON_PRODUCTION_USE: "true"
+      TB_LICENSE_INSTANCE_DATA_FILE: /data/license.data
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/thingsboard
+      SPRING_DATASOURCE_USERNAME: thingsboard
+      SPRING_DATASOURCE_PASSWORD: ${FARM_DB_PASSWORD:?set FARM_DB_PASSWORD}
+      DATABASE_TS_TYPE: sql
+      DATABASE_TS_LATEST_TYPE: sql
+      TB_QUEUE_TYPE: in-memory
+      SQL_TTL_TS_TS_KEY_VALUE_TTL: "31536000"
+      SSL_ENABLED: "true"
+      SSL_PEM_CERT: /tls/server.crt
+      SSL_PEM_KEY: /tls/server.key
+      SSL_PEM_KEY_PASSWORD: ""
+      MQTT_SSL_ENABLED: "true"
+      MQTT_SSL_PEM_CERT: /tls/server.crt
+      MQTT_SSL_PEM_KEY: /tls/server.key
+      MQTT_SSL_PEM_KEY_PASSWORD: ""
+    volumes:
+      - license-data:/data
+      - ${FARM_TLS_DIR:?set FARM_TLS_DIR}:/tls:ro
+volumes:
+  postgres-data:
+  license-data:

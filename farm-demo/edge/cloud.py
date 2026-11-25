@@ -1,6 +1,6 @@
 """ThingsBoard-shaped MQTT + historical REST adapter.
 
-Production endpoints/credentials/provisioning are configured in Task 10/12.
+Task 10: real ThingsBoard Gateway MQTT and historical REST.
 The explicit loopback demo mode is only for the isolated test Cloud.
 """
 import json
@@ -14,16 +14,19 @@ from sync import CloudUnavailable
 
 class MqttRestCloud:
     def __init__(self, host, port, base_url, devices, *, token=None, api_token=None,
-                 demo=False, timeout=5, ca_file=None):
+                 demo=False, timeout=5, ca_file=None, api_key=None):
         parsed=urllib.parse.urlsplit(base_url)
         if demo:
             if host!="127.0.0.1" or parsed.hostname!="127.0.0.1" or parsed.scheme!="http":
                 raise ValueError("demo transport requires loopback")
-        elif parsed.scheme!="https" or not token or not api_token:
+        elif parsed.scheme!="https" or not token or not (api_token or api_key):
             raise ValueError("production transport requires HTTPS and both credentials")
         self.host,self.port,self.base_url=host,port,base_url.rstrip("/")
         self.devices,self.timeout=devices,timeout
-        self.api_token=api_token
+        if api_token and api_key:
+            raise ValueError("choose one REST credential")
+        self.headers = ({"X-Authorization": "ApiKey " + api_key.removeprefix("ApiKey ")}
+                        if api_key else {"X-Authorization": "Bearer " + api_token} if api_token else {})
         self.client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv311)
         if token:
             self.client.username_pw_set(token)
@@ -32,9 +35,13 @@ class MqttRestCloud:
         self.context=ssl.create_default_context(cafile=ca_file)
         self.ready=threading.Event()
         self.client.on_connect=lambda c,u,f,r,p: self.ready.set() if not r.is_failure else None
-        self.client.on_disconnect=lambda c,u,f,r,p: self.ready.clear()
+        self.client.on_disconnect=self.on_disconnect
         self.running=False
         self.announced=set()
+
+    def on_disconnect(self, client, userdata, flags, reason, properties):
+        self.ready.clear()
+        self.announced.clear()
 
     def connect(self):
         self.close()
@@ -43,6 +50,7 @@ class MqttRestCloud:
             self.client.loop_start()
             self.running=True
             if not self.ready.wait(self.timeout):
+                self.close()
                 raise CloudUnavailable("MQTT connection not confirmed")
         except (OSError, RuntimeError) as exc:
             self.close()
@@ -83,11 +91,11 @@ class MqttRestCloud:
                 raise CloudUnavailable("device has no provisioned REST ID")
             keys=sorted({k for r in records for k in r["values"] if k!="sync_mode"})
             stamps={r["ts"] for r in records}
-            query=urllib.parse.urlencode(dict(keys=",".join(keys),startTs=min(stamps),
+            query=urllib.parse.urlencode(dict(keys=",".join(keys),startTs=max(0,min(stamps)-1),
                 endTs=max(stamps)+1,agg="NONE",limit=10000))
             ident=urllib.parse.quote(self.devices[device],safe="")
             url=f"{self.base_url}/api/plugins/telemetry/DEVICE/{ident}/values/timeseries?{query}"
-            headers={"X-Authorization":"Bearer "+self.api_token} if self.api_token else {}
+            headers=self.headers
             try:
                 with urllib.request.urlopen(urllib.request.Request(url,headers=headers),
                         timeout=self.timeout,context=self.context) as response:

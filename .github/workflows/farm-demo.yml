@@ -156,9 +156,56 @@ jobs:
           retention-days: 30
           overwrite: true
           if-no-files-found: error
+  thingsboard:
+    name: Real ThingsBoard PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FARM_TB_ADMIN_USER: tenant@thingsboard.org
+      FARM_TB_ADMIN_PASSWORD: tenant
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated TLS and PostgreSQL credentials
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          bash farm-demo/cloud/ci-tls.sh "$RUNNER_TEMP/farm-tls"
+          echo "FARM_TLS_DIR=$RUNNER_TEMP/farm-tls" >> "$GITHUB_ENV"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Install actual ThingsBoard (non-production)
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml pull
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true -e LOAD_DEMO=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml up -d
+      - name: Real MQTT/TLS and REST readback, D04, restart persistence
+        run: |
+          python farm-demo/tests/verify_thingsboard.py --db farm-demo/evidence/thingsboard-edge.sqlite --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/thingsboard-report.json
+          docker compose -f farm-demo/cloud/compose.yml exec -T postgres psql -U thingsboard -d thingsboard -c 'SELECT version();' > farm-demo/evidence/postgres-version.txt
+          docker image inspect thingsboard/tb-node:4.4.1 --format '{{json .RepoDigests}}' > farm-demo/evidence/thingsboard-image.txt
+      - name: Stop isolated services
+        if: always()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml down -v
+          rm -rf "$RUNNER_TEMP/farm-tls"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: thingsboard-evidence
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: error
   development_gate:
     name: Farm development acceptance (no hardware claim)
-    needs: [native, firmware, preflight]
+    needs: [native, firmware, preflight, thingsboard]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -168,10 +215,12 @@ jobs:
           NATIVE: ${{ needs.native.result }}
           FIRMWARE: ${{ needs.firmware.result }}
           PREFLIGHT: ${{ needs.preflight.result }}
+          THINGSBOARD: ${{ needs.thingsboard.result }}
         run: |
           printf 'Commit: %s\nNative: %s\nFirmware: %s\nOffline preflight: %s\n' "$GITHUB_SHA" "$NATIVE" "$FIRMWARE" "$PREFLIGHT" | tee -a "$GITHUB_STEP_SUMMARY"
           echo 'Hardware simulation: DEFERRED in this development gate. Separate hardware acceptance is mandatory for Task 17.' >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$PREFLIGHT" != success ]]; then
+          echo "ThingsBoard integration: $THINGSBOARD" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$PREFLIGHT" != success || "$THINGSBOARD" != success ]]; then
             echo "::error::Mandatory development job failed, was cancelled, or was skipped."
             exit 1
           fi

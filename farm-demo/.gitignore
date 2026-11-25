@@ -10,3 +10,6 @@ evidence/
 !.env.example
 *.chip.wasm
 edge/weather_pb2.py
+
+*.secret
+**/devices-cloud.json
