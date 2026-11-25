@@ -1,5 +1,6 @@
 """Real Mosquitto + Edge process + native firmware bytes + simulated UART RX."""
 import argparse
+import base64
 import json
 import os
 import secrets
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from pathlib import Path
 import paho.mqtt.client as mqtt
 
@@ -18,7 +20,9 @@ sys.path.insert(0,str(ROOT/"edge"))
 from serial_bridge import SerialBridge
 from mqtt_security import generate
 from protocol import decode
-from weather_pb2 import WeatherRecord
+from weather_pb2 import WeatherRecord, FarmCommand
+from outbox import connect
+import rpc
 
 APP, DEV="farm-demo","0000000000000001"
 
@@ -57,6 +61,7 @@ def run(native_log, db_path):
         client.username_pw_set('farm-simulator',sim_password)
         ready=threading.Event()
         acked=threading.Event()
+        commanded=threading.Event()
         lock=threading.Lock()
         outcomes=[]
         def start_edge():
@@ -87,6 +92,7 @@ def run(native_log, db_path):
         def down(c,u,message):
             with lock:
                 bridge.on_downlink(message.topic,message.payload)
+                if bridge.command: commanded.set()
                 if bridge.ack:
                     with sqlite3.connect(db_path) as reader:
                         row=reader.execute("SELECT payload_json,state FROM weather_outbox WHERE device_id=? AND sequence_number=?",
@@ -183,10 +189,53 @@ def run(native_log, db_path):
                 require(reader.execute("PRAGMA integrity_check").fetchone()==("ok",),"SQLite integrity failed")
             require(len(rows)==2 and len(quarantine)==2 and len(outcomes)==3,"wrong record/ACK counts")
             require(all(r[3]=="PENDING" for r in rows),"unexpected sync state")
-            return dict(result="PASS",scope="real MQTT broker and Edge service, native firmware wire vectors, logical RX adapter (not Wokwi/RF)",
+            # Task 13: submit a durable queue item, route via actual authenticated
+            # MQTT and SerialBridge, execute the same C++ command codec/controller,
+            # then verify the returned FPort 22 receipt is durable before ACK.
+            probe=tmp/"rpc-probe"
+            subprocess.run(["g++","-std=c++17","-Wall","-Wextra","-Werror",
+                "-I",str(ROOT/"firmware/include"),str(ROOT/"tests/rpc_probe.cpp"),"-o",str(probe)],check=True)
+            ident=str(uuid.uuid4()); now=rpc.now_ms()
+            db=connect(db_path,recover=False)
+            try:
+                rpc.schema(db)
+                rpc.admit(db,json.dumps({"device":"FARM_WS_01","data":{"id":91,"method":"request_stop_irrigation",
+                    "params":{"command_id":ident,"created_at_ms":now,"expires_at_ms":now+900000}}}),
+                    {"FARM_WS_01":"uuid"},now)
+                bridge.on_line("SIM_RTC offset=0 trusted=1")
+                original=tx("report",7)
+                require(commanded.wait(10),"FPort 21 never arrived via MQTT")
+                with lock:
+                    frame=bridge.on_line("RX1")
+                require(frame and frame.startswith("DOWNLINK 21 "),"missing command in receive window")
+                require(bridge.on_line("RX2") is None,"more than one downlink per uplink")
+                raw=bytes.fromhex(frame.split()[2]); cmd=FarmCommand.FromString(raw)
+                require(cmd.ack_sequence==original["sequence_number"] and str(uuid.UUID(bytes=cmd.command_id))==ident,
+                        "command/ACK association wrong")
+                require(db.execute("SELECT state FROM farm_commands WHERE command_id=?",(ident,)).fetchone()[0]=="QUEUED",
+                        "optimistic APPLIED before device response")
+                response_seq=30000
+                response=subprocess.check_output([str(probe),raw.hex(),str(cmd.created_at_s+1),str(response_seq),"safe"],text=True).strip()
+                acked.clear()
+                with lock:
+                    bridge.on_line(f"RADIO_TX seq={response_seq} fcnt=8 fport=22 hex={response} delivered=1 ts=11")
+                require(acked.wait(10),"no durable result ACK")
+                with lock:
+                    require(bridge.on_line("RX1").startswith("DOWNLINK 20 "),"bad result ACK")
+                receipt=db.execute("SELECT payload FROM command_receipts WHERE station=? AND sequence=?",
+                                   ("FARM_WS_01",response_seq)).fetchone()
+                require(receipt and json.loads(receipt[0])["stop_request"],"missing actual stop confirmation")
+                require(db.execute("SELECT state FROM farm_commands WHERE command_id=?",(ident,)).fetchone()[0]=="APPLIED",
+                        "device response did not complete command")
+                require([x[0] for x in db.execute("SELECT state FROM command_events WHERE command_id=? ORDER BY revision",(ident,))]
+                        ==["PENDING","QUEUED","APPLIED"],"missing lifecycle transition")
+            finally:
+                db.close()
+            return dict(result="PASS",scope="real MQTT broker and Edge service, native firmware wire vectors and RPC handler, logical RX adapter (not Wokwi/RF)",
                         unique_records=len(rows),ack_count=len(outcomes),quarantined=len(quarantine),
                         records=[json.loads(r[2]) for r in rows],quarantine_reasons=[r[0] for r in quarantine],
-                        replay_after_restart=True,ack_after_commit=True,authenticated_mqtt=True,negative_acl_checks=5)
+                        replay_after_restart=True,ack_after_commit=True,authenticated_mqtt=True,negative_acl_checks=5,
+                        rpc_command=ident,rpc_result="APPLIED",rpc_ack_after_commit=True)
         finally:
             client.disconnect()
             client.loop_stop()

@@ -41,5 +41,8 @@ int main(){
     assert(result.ok&&result.size<=51);
     control::Snapshot maximum{2147483647u,10,7,900,true};
     assert(control::encode(UINT32_MAX,UINT32_MAX,cmd,{control::Applied,control::Ok},maximum,900,true,true).size<=51);
+    Memory torn=flash;torn.data[4]^=1;
+    control::Controller<Memory> damaged(torn);assert(!damaged.begin());
+    cmd.id[0]=7;assert(damaged.execute(cmd,151,true,true,6).reason==control::Storage);
     std::cout<<"Command validation, durable admission, replay, safety and configuration PASS\n";
 }

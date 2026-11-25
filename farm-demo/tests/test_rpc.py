@@ -46,6 +46,9 @@ class RpcTest(unittest.TestCase):
             applied_period_s=300,outputs=1)
         decoded=rpc.decode_result(result.SerializeToString(deterministic=True))
         with self.assertRaises(ValueError):
+            rpc.record_result(self.db,"FARM_WS_01",dict(decoded,ts_s=self.now//1000+900),self.now+901000)
+        self.assertEqual(self.state(),"QUEUED")
+        with self.assertRaises(ValueError):
             rpc.record_result(self.db,"WRONG",decoded,self.now+8000)
         self.assertEqual(rpc.record_result(self.db,"FARM_WS_01",decoded,self.now+8000),"inserted")
         self.assertEqual(rpc.record_result(self.db,"FARM_WS_01",decoded,self.now+8000),"duplicate")

@@ -2,6 +2,18 @@ name: Task 13 device command acceptance, replay and expiry
 version: 1
 steps:
   - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 3
   - write-serial: "ACK MANUAL\n"
   - wait-serial: 'ACK_MANUAL'
   - wait-serial: 'RADIO_TX seq=1 fcnt=1 fport=10'

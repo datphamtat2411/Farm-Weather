@@ -52,9 +52,10 @@ def exercise(submit,status,cloud,path,user,station):
                     rpc.flush(db,cloud,rpc.now_ms())
                     return db.execute("SELECT COUNT(*) FROM command_events WHERE command_id=? AND published=0",(ident,)).fetchone()[0]==0
                 eventually(synced,"command lifecycle not persisted/read back",seconds=35)
-                data=user.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",keys=key)
-                assert json.loads(data[key][0]["value"])["state"]==expected
-                assert status(ident)["state"]==expected
+                def latest_confirmed():
+                    data=user.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",keys=key)
+                    return bool(data.get(key)) and json.loads(data[key][0]["value"])["state"]==expected and status(ident)["state"]==expected
+                eventually(latest_confirmed,"latest command status absent")
                 if method=="set_config" and expected=="APPLIED":
                     def confirmed():
                         attrs=user.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/attributes/CLIENT_SCOPE")
