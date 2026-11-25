@@ -1,23 +1,16 @@
 #pragma once
 #include <stdint.h>
 #include "design_config.hpp"
+#include "acquisition.hpp"
 
 namespace farm {
-constexpr unsigned WIND = 1, RAIN = 2, HEAT = 4, BATTERY = 8;
+constexpr unsigned WIND = 1, RAIN = 2, HEAT = 4, BATTERY = 8, SENSOR = 16;
 inline double rainfall(unsigned tips) { return tips * design::rain_mm_per_tip; }
 inline double windSpeed(unsigned pulses, unsigned seconds) {
     return seconds ? (2.0 * pulses / (3.0 * seconds)) : 0;
 }
 inline bool acceptPulse(uint32_t now, uint32_t previous, bool seen, uint32_t debounce) {
     return !seen || uint32_t(now - previous) >= debounce;
-}
-inline unsigned median5(unsigned* a) {
-    for (unsigned i=1;i<5;++i) {
-        unsigned v=a[i], j=i;
-        while(j && a[j-1]>v){a[j]=a[j-1];--j;}
-        a[j]=v;
-    }
-    return a[2];
 }
 struct Station {
     uint32_t seconds=0;
@@ -26,7 +19,7 @@ struct Station {
     unsigned quiet=0, hot=0, cool=0, low=0, charged=0;
     unsigned period=design::normal_period_s;
     bool tick(unsigned windPulses,unsigned rainTips) {
-        unsigned i=seconds%design::rain_window_s;
+        const unsigned i=seconds%design::rain_window_s;
         rainWindow-=rain[i];rain[i]=rainTips;rainWindow+=rainTips;
         wind[seconds%design::wind_window_s]=windPulses;
         ++seconds;++periodElapsed;
@@ -45,15 +38,20 @@ struct Station {
         return periodElapsed>=period;
     }
     void temperature(double c) {
-        hot=c>=design::heat_on_c?hot+1:0;cool=c<design::heat_off_c?cool+1:0;
+        hot=c>=design::heat_on_c?hot+1:0;
+        cool=c<design::heat_off_c?cool+1:0;
         if(hot>=design::confirmation_count)status|=HEAT;
         if(cool>=design::confirmation_count)status&=~HEAT;
     }
+    void temperatureInvalid() { hot=cool=0; }
+    void sensorFault(bool active) { if(active)status|=SENSOR;else status&=~SENSOR; }
     void battery(unsigned mv) {
-        low=mv<=design::battery_low_mv?low+1:0;charged=mv>=design::battery_recovery_mv?charged+1:0;
+        low=mv<=design::battery_low_mv?low+1:0;
+        charged=mv>=design::battery_recovery_mv?charged+1:0;
         if(low>=design::confirmation_count){status|=BATTERY;period=design::low_power_period_s;}
         if(charged>=design::confirmation_count){status&=~BATTERY;period=design::normal_period_s;}
     }
+    void batteryInvalid() {low=charged=0;}
     void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;}
 };
 }
