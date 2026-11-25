@@ -132,9 +132,14 @@ def run(url, ca, port):
         # Query the real latest and historical timeseries; routing/tick keys
         # must never be exposed as measurements.
         path=f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries"
-        actual=api.request("GET",path,keys="record_id,temperature,sync_mode,sync_state,farm_watchdog")
-        assert not any(actual.get(k) for k in ("sync_mode","sync_state","farm_watchdog"))
-        assert actual["record_id"][0]["value"]==f"{STATION}:{seq}"
+        # SQL findLatest(key) synthesizes a null entry for absent requested
+        # keys. Enumerate actual latest rows instead of requesting missing keys.
+        actual=api.request("GET",path)
+        forbidden={"sync_mode","sync_state","farm_watchdog"}
+        assert forbidden.isdisjoint(actual), sorted(forbidden.intersection(actual))
+        persisted_keys=api.request("GET",path.replace("/values/","/keys/"))
+        assert forbidden.isdisjoint(persisted_keys), persisted_keys
+        assert actual["record_id"][0]["value"]==f"{STATION}:{seq}", actual["record_id"]
         for key in ("sync_mode","sync_state","farm_watchdog"):
             historical=api.request("GET",path,keys=key,startTs=stamp-3600000,endTs=int(time.time()*1000)+1000,agg="NONE",limit=1000)
             assert not historical.get(key)
