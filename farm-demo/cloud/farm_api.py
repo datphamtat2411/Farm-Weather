@@ -112,9 +112,17 @@ class FarmApi:
         result=user_api.request("GET",f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",keys=key)
         values=result.get(key,[])
         status={"command_id":ident,"method":method,"state":"PENDING","result":None,"revision":0}
-        if values:
-            value=json.loads(values[0]["value"])
-            require(value.get("command_id")==ident and value.get("method")==method and
+        # ThingsBoard latest-values API may return a placeholder with null
+        # value for a requested key that has never been written. That is still
+        # an admitted PENDING command, not a malformed result.
+        if values and values[0].get("value") is not None:
+            raw=values[0]["value"]
+            require(isinstance(raw,str),502,"invalid upstream command status type")
+            try:
+                value=json.loads(raw)
+            except ValueError:
+                raise Denied(502,"invalid upstream command status JSON") from None
+            require(isinstance(value,dict) and value.get("command_id")==ident and value.get("method")==method and
                     value.get("state") in ("PENDING","QUEUED","APPLIED","REJECTED","EXPIRED","UNKNOWN"),
                     502,"invalid upstream command status")
             status=value
