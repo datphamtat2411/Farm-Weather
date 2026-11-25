@@ -128,6 +128,8 @@ def provision(api):
     topology = {"devices": {STATION: station["id"]["id"]}, "gateway": gateway["id"]["id"],
                 "farm": farm["id"]["id"], "zone": zone["id"]["id"],
                 "station_profile": station_profile["id"]["id"], "gateway_profile": gateway_profile["id"]["id"]}
+    from rules import install
+    topology["rule_chains"] = install(api, topology)
     return topology, credentials["credentialsId"]
 
 def main():
@@ -136,6 +138,7 @@ def main():
     p.add_argument("--ca-file")
     p.add_argument("--devices-output", type=Path, required=True)
     p.add_argument("--gateway-token-output", type=Path, required=True)
+    p.add_argument("--watchdog-token-output", type=Path)
     args = p.parse_args()
     api = Rest(args.url, args.ca_file)
     api.login(os.environ["FARM_TB_ADMIN_USER"], os.environ["FARM_TB_ADMIN_PASSWORD"])
@@ -145,6 +148,11 @@ def main():
     fd = os.open(args.gateway_token_output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(token + "\n")
+    if args.watchdog_token_output:
+        station_credentials = api.request("GET", "/api/device/" + topology["devices"][STATION] + "/credentials")
+        fd = os.open(args.watchdog_token_output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(station_credentials["credentialsId"] + "\n")
     print(json.dumps(topology, indent=2))
 
 if __name__ == "__main__":

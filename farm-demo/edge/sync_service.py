@@ -31,6 +31,7 @@ def main():
         try:
             worker=Synchronizer(db,cloud)
             previous=None
+            next_health=0
             while True:
                 worker.step()
                 health=worker.status()
@@ -38,6 +39,14 @@ def main():
                 if signature!=previous:
                     logging.info("sync health=%s",json.dumps(health))
                     previous=signature
+                now=worker.clock()
+                if worker.connected and now>=next_health:
+                    from sync import CloudUnavailable
+                    try:
+                        cloud.publish_health(health,now)
+                    except CloudUnavailable:
+                        worker.offline(now)
+                    next_health=now+30000
                 time.sleep(.25)
         finally:
             cloud.close()

@@ -82,6 +82,12 @@ class MqttRestCloud:
                 self.announced.add(device)
         self.send("v1/gateway/telemetry",payload)
 
+    def publish_health(self, health, now):
+        self.send("v1/devices/me/telemetry", {"ts": now, "values": {
+            "farm_health": True, "disk_bytes": health["disk_bytes"],
+            "budget_bytes": health["budget_bytes"], "pending": health["pending"],
+            "oldest_age_ms": health["oldest_age_ms"] or 0, "link_state": health["state"]}})
+
     def read(self,payload):
         if not self.ready.is_set():
             raise CloudUnavailable("MQTT disconnected")
