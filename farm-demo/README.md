@@ -25,3 +25,7 @@ The common sensor-processing core implements report Ch.3 table 3.5/3.6: pulse de
 ## Task 04 — local alarms
 
 See [local alarm contract and evidence](docs/task-04-local-alarms.md). Local actuator state and event records do not depend on network availability. The simulator includes a diagnosed wind-failure input and inspection acknowledgment; it never starts a pump.
+
+## Task 05 — power management
+
+See [power schedule and engineering budget](docs/task-05-power.md). The logical sleep/wake model and actual ADC-driven battery policy preserve sampling and local alarms across 300/900-second report periods. No physical current or Stop 2 measurement is claimed.

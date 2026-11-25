@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "physical_pins.hpp"
 #include "weather.hpp"
+#include "power.hpp"
 
 #if !defined(FARM_PHYSICAL_COMPILE_PROBE) || !defined(STM32L476xx)
 #error This non-deployable compile probe must target STM32L476RG.
@@ -14,12 +15,14 @@ farm::DirectionAccumulator direction;
 volatile unsigned probe_direction;
 volatile unsigned compile_probe_status;
 void setup() {
+    farm::PowerMonitor powerProbe;
+    powerProbe.begin(0);powerProbe.sleep(1);powerProbe.wakePulse(2,true);powerProbe.wakeRtc(3);
     probe.tick(0,0);
     pipeline.ingest({25.0f,60.0f,1000.0f},true);
     direction.add(0);direction.add(45);
     unsigned angle=0;
     if(direction.mean(angle))probe_direction=angle;
     localAlarmProbe.update(probe.seconds,probe.status,probe.windReady);
-    compile_probe_status=probe.status | unsigned(localAlarmProbe.stopRequest);
+    compile_probe_status=probe.status | unsigned(localAlarmProbe.stopRequest) | powerProbe.pulse_wakes;
 }
 void loop() {}

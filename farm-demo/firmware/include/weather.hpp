@@ -49,7 +49,8 @@ struct Station {
     bool windQuality[design::wind_window_s]={},windReady=false,windPeriodValid=true;
     unsigned currentWindPulses=0;
     unsigned quiet=0, hot=0, cool=0, low=0, charged=0;
-    unsigned period=design::normal_period_s;
+    unsigned period=design::normal_period_s; // requested mode, confirmed by battery policy
+    unsigned activePeriod=design::normal_period_s; // immutable until current record closes
     bool tick(unsigned windPulses,unsigned rainTips,bool windValid=true) {
         const unsigned i=seconds%design::rain_window_s;
         rainWindow-=rain[i];rain[i]=rainTips;rainWindow+=rainTips;
@@ -72,7 +73,7 @@ struct Station {
         }
         if(rainfall(rainWindow)>=design::rain_on_mm)status|=RAIN;
         else if(rainfall(rainWindow)<design::rain_off_mm)status&=~RAIN;
-        return periodElapsed>=period;
+        return periodElapsed>=activePeriod;
     }
     void temperature(double c) {
         hot=c>=design::heat_on_c?hot+1:0;
@@ -89,6 +90,6 @@ struct Station {
         if(charged>=design::confirmation_count){status&=~BATTERY;period=design::normal_period_s;}
     }
     void batteryInvalid() {low=charged=0;}
-    void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;windPeriodValid=true;}
+    void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;windPeriodValid=true;activePeriod=period;}
 };
 }

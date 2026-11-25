@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "weather.hpp"
+#include "power.hpp"
 #include "ambient_sensor.hpp"
 #include "sim_pins.hpp"
 using namespace farm::sim;
@@ -10,6 +11,8 @@ using namespace farm::sim;
 
 Uart& WeatherSerial=Serial1;
 farm::Station station;
+farm::PowerMonitor power;
+unsigned ambientSamples=0,directionSamples=0,batterySamples=0;
 farm::LocalActuation actuation;
 farm::ReadHealth windHealth,directionHealth,batteryHealth;
 float latestTemperature=0;
@@ -32,12 +35,14 @@ constexpr unsigned SIM_VREF_MV=3300;
 
 void rainISR(){
     const uint32_t now=micros();
+    power.wakePulse(now,false);
     if(farm::acceptPulse(now,lastTip,seenTip,farm::design::rain_debounce_ms*1000/acceleration)){
         ++tips;lastTip=now;seenTip=true;
     }
 }
 void windISR(){
     const uint32_t now=micros();
+    power.wakePulse(now,true);
     if(farm::acceptPulse(now,lastWind,seenWind,farm::design::wind_debounce_ms*1000/acceleration)){
         ++windPulses;lastWind=now;seenWind=true;
     }
@@ -48,6 +53,7 @@ unsigned readMedian(uint32_t pin){
     return farm::median5(values);
 }
 void readAmbient(){
+    ++ambientSamples;
     farm::AmbientSample sample={};
     if(!ambientReady)ambientReady=ambient.begin();
     const bool readOk=ambientReady&&ambient.read(sample);
@@ -58,12 +64,14 @@ void readAmbient(){
     if(!readOk)WeatherSerial.println("BME280_SAMPLE_INVALID");
 }
 void sampleDirection(){
+    ++directionSamples;
     unsigned angle=0;
     directionValid=farm::DirectionLookup::decode(readMedian(direction),angle);
     directionHealth.sample(directionValid);
     if(directionValid)directionPeriod.add(angle);
 }
 void sampleBattery(){
+    ++batterySamples;
     unsigned measured=0;
     batteryValid=farm::batteryMillivolts(readMedian(battery),SIM_VREF_MV,measured);
     batteryHealth.sample(batteryValid);
@@ -103,7 +111,22 @@ void emitTelemetry(){
     s.print(",\"rainfall\":");s.print(farm::rainfall(station.rainPeriod),4);
     if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
     s.print(",\"status\":");s.print(station.status);
-    s.print(",\"valid_mask\":");s.print(valid);s.println("}");
+    s.print(",\"valid_mask\":");s.print(valid);
+    // Separate diagnostics within serial demo; Task 06 maps wire schema explicitly.
+    s.print(",\"next_period_s\":");s.print(station.period);
+    s.print(",\"ambient_samples\":");s.print(ambientSamples);
+    s.print(",\"direction_samples\":");s.print(directionSamples);
+    s.print(",\"battery_samples\":");s.print(batterySamples);
+    // Copy atomically: counters and 64-bit accumulators are shared with EXTI.
+    noInterrupts();power.account(micros());const auto stats=power;interrupts();
+    s.print(",\"sim_active_us\":");s.print((uint32_t)stats.active_us);
+    s.print(",\"sim_sleep_us\":");s.print((uint32_t)stats.sleep_us);
+    s.print(",\"sleep_entries\":");s.print(stats.sleep_entries);
+    s.print(",\"rtc_wakes\":");s.print(stats.rtc_wakes);
+    s.print(",\"pulse_wakes\":");s.print(stats.pulse_wakes);
+    s.print(",\"wind_edges\":");s.print(stats.wind_edges);
+    s.print(",\"rain_edges\":");s.print(stats.rain_edges);
+    s.println("}");
     directionPeriod.reset();
     station.finishPeriod();
 }
@@ -130,6 +153,7 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
     s.print(",\"changed_mask\":");s.print(changed);
     s.print(",\"status\":");s.print(station.status);
+    s.print(",\"requested_period_s\":");s.print(station.period);
     s.print(",\"fault_mask\":");s.print(faultMask());
     s.print(",\"changed_fault_mask\":");s.print(changedFaults);
     s.print(",\"mode\":\"");s.print(modeName());s.print("\"");
@@ -149,6 +173,7 @@ void setup(){
     pinMode(wind_fault,INPUT_PULLDOWN);pinMode(confirm_button,INPUT_PULLUP);
     pinMode(buzzer,OUTPUT);pinMode(relay,OUTPUT);
     digitalWrite(buzzer,LOW);digitalWrite(relay,LOW);
+    power.begin(micros());
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
     WeatherSerial.println("BOOT FARM_WS_01");
@@ -160,16 +185,21 @@ void setup(){
     WeatherSerial.println("READY FARM_WS_01 SIMULATION");
 }
 void loop(){
-    if((int32_t)(millis()-nextTick)<0)return;
+    if((int32_t)(millis()-nextTick)<0){
+        // Logical Stop 2: no peripheral tasks due, no transactions in flight.
+        // Do NOT execute physical Stop 2 on Wokwi F103; SysTick/EXTI stay live.
+        noInterrupts();power.sleep(micros());interrupts();
+        return;
+    }
     nextTick+=TICK_MS;
-    noInterrupts();const unsigned n=tips,pulses=windPulses;tips=0;windPulses=0;interrupts();
+    noInterrupts();power.wakeRtc(micros());const unsigned n=tips,pulses=windPulses;tips=0;windPulses=0;interrupts();
     if(n){totalTips+=n;WeatherSerial.print("RAIN_TIPS=");WeatherSerial.println(totalTips);}
     const bool windValid=!digitalRead(wind_fault);
     windHealth.sample(windValid);
     const bool due=station.tick(pulses,n,windValid);
-    if(station.seconds%farm::design::ambient_period_s==0)readAmbient();
-    if(station.seconds%farm::design::direction_period_s==0)sampleDirection();
-    if(station.seconds%farm::design::normal_period_s==0)sampleBattery();
+    if(farm::SampleSchedule::ambient(station.seconds))readAmbient();
+    if(farm::SampleSchedule::direction(station.seconds))sampleDirection();
+    if(farm::SampleSchedule::battery(station.seconds))sampleBattery();
     const unsigned faults=faultMask();
     station.sensorFault(faults!=0);
     const bool pressed=!digitalRead(confirm_button);

@@ -36,6 +36,9 @@ jobs:
           /tmp/acquisition-test | tee farm-demo/evidence/acquisition-native.log
           g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/alarm_test.cpp -o /tmp/alarm-test
           /tmp/alarm-test | tee farm-demo/evidence/alarm-native.log
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/power_test.cpp -o /tmp/power-test
+          /tmp/power-test | tee farm-demo/evidence/power-native.log
+          python farm-demo/tests/energy_budget.py > farm-demo/evidence/energy-budget.json
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
@@ -87,7 +90,7 @@ jobs:
     needs: [native, firmware]
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -154,6 +157,14 @@ jobs:
           wokwi-cli . --scenario scenarios/local-alarms.yaml --fail-text HARDWARE_ERROR --timeout 120000 --serial-log-file ../evidence/local-alarms.log 2>&1 | tee ../evidence/local-alarms-wokwi.log
       - name: Verify local alarm transitions
         run: python farm-demo/tests/verify_alarms.py farm-demo/evidence/local-alarms.log | tee farm-demo/evidence/local-alarms.json
+      - name: Wokwi low battery and recovery
+        working-directory: farm-demo/firmware
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: |
+          wokwi-cli . --scenario scenarios/power.yaml --fail-text HARDWARE_ERROR --timeout 300000 --serial-log-file ../evidence/power.log 2>&1 | tee ../evidence/power-wokwi.log
+      - name: Verify power schedule and retained measurements
+        run: python farm-demo/tests/verify_power.py farm-demo/evidence/power.log | tee farm-demo/evidence/power.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
