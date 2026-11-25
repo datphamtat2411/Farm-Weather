@@ -1,0 +1,68 @@
+name: Farm weather demo CI
+on:
+  push:
+    paths: ['farm-demo/**', '.github/workflows/farm-demo.yml']
+  pull_request:
+    paths: ['farm-demo/**', '.github/workflows/farm-demo.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Native logic tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I farm-demo/firmware/include farm-demo/tests/weather_test.cpp -o /tmp/weather-test
+          /tmp/weather-test
+          python -m unittest discover -s farm-demo/tests -v
+      - name: Build STM32 firmware
+        run: |
+          python -m pip install platformio==6.1.18
+          pio run -d farm-demo/firmware
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.bin
+            farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.elf
+  simulation:
+    needs: build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Wokwi token
+        run: |
+          if [ -z "$WOKWI_CLI_TOKEN" ]; then
+            echo "::error::Set WOKWI_CLI_TOKEN in repository Actions secrets to run Wokwi CI."
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: farm-demo/firmware/.pio/build/bluepill_f103c8
+      - name: Install Wokwi CLI
+        run: curl -fsSL https://wokwi.com/ci/install.sh | sh
+      - name: Run Wokwi scenario
+        working-directory: farm-demo/firmware
+        run: |
+          wokwi-cli lint
+          wokwi-cli . --scenario scenarios/weather.yaml --timeout 60000 --serial-log-file serial.log
+      - name: Verify simulator telemetry and SQLite deduplication
+        run: |
+          python farm-demo/edge/outbox.py farm-demo/firmware/serial.log --db /tmp/weather.sqlite
+          python farm-demo/edge/outbox.py farm-demo/firmware/serial.log --db /tmp/weather.sqlite
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wokwi-serial-log
+          path: farm-demo/firmware/serial.log
