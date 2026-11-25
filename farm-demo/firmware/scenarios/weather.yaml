@@ -5,6 +5,11 @@ steps:
   - set-control:
       part-id: wind
       name: position
+      value: 0.1
+  - delay: 500ms
+  - set-control:
+      part-id: wind
+      name: position
       value: 0.9
   - wait-serial: 'WIND_ALARM_ON'
   - set-control:
@@ -23,3 +28,4 @@ steps:
       value: 0.1
   - wait-serial: 'WIND_ALARM_OFF'
   - wait-serial: 'TELEMETRY'
+  - delay: 200ms

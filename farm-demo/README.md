@@ -8,3 +8,7 @@ MVP cho báo cáo trạm thời tiết mini. Mã nguồn tách khỏi ThingsBoar
 - Chưa xác minh Stop 2, mức dòng điện, cảm biến BME280 thật hoặc an toàn điện bằng Wokwi.
 - Các bước CI: native test, build PlatformIO, chạy Wokwi scenario và kiểm tra log (cần WOKWI_CLI_TOKEN), thử nhập bản ghi log vào SQLite.
 - Không lưu token vào mã nguồn. Đặt WOKWI_CLI_TOKEN tại Settings > Secrets and variables > Actions.
+
+## Source provenance
+
+The farm-demo directory contains standalone project-specific firmware, tests and Edge code, not upstream ThingsBoard source. Do not stamp these files with a ThingsBoard copyright claim. The root ThingsBoard license and its restrictions remain unchanged; do not copy upstream code into this directory to evade the provenance check. Any additional licensing decision for standalone code belongs to the repository owner.

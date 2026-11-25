@@ -1067,6 +1067,8 @@
                                     <validHeader>${main.dir}/tools/src/main/python/license-headers/templates/license-header-ce-modified.txt</validHeader>
                                 </validHeaders>
                                 <excludes>
+                                    <!-- Standalone farm demo is not ThingsBoard-derived source; provenance remains separate. -->
+                                    <exclude>farm-demo/**</exclude>
                                     <exclude>**/.env</exclude>
                                     <exclude>**/*.env</exclude>
                                     <exclude>**/.eslintrc</exclude>

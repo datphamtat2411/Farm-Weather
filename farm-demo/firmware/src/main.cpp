@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "weather.hpp"
 
-HardwareSerial WeatherSerial(PA10, PA9);
+Uart& WeatherSerial = Serial1;
 farm::Station station;
 volatile unsigned tips=0;
 volatile uint32_t lastTip=0;
@@ -50,6 +50,8 @@ void emitTelemetry(){
     station.finishPeriod();
 }
 void setup(){
+    WeatherSerial.setRx(PA10);
+    WeatherSerial.setTx(PA9);
     WeatherSerial.begin(115200);
     analogReadResolution(12);
     pinMode(PB1,INPUT_PULLUP);
