@@ -16,8 +16,7 @@
       "top": -140,
       "left": 180,
       "attrs": {
-        "value": "384",
-        "label": "Wind vane ADC (8 positions)"
+        "value": "384"
       }
     },
     {
@@ -26,8 +25,7 @@
       "top": -140,
       "left": 280,
       "attrs": {
-        "value": "568",
-        "label": "Battery voltage model"
+        "value": "568"
       }
     },
     {

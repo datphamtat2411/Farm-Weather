@@ -14,8 +14,8 @@ volatile unsigned tips=0, windPulses=0;
 volatile uint32_t lastTip=0;
 volatile bool seenTip=false, seenWind=false;
 volatile uint32_t lastWind=0;
-farm::AmbientSensor ambient;
-TwoWire sensorBus(sda,scl);
+farm::SimI2c sensorBus(sda,scl);
+farm::AmbientSensor ambient(sensorBus);
 unsigned sequence=0, prevStatus=0, totalTips=0;
 uint32_t nextTick;
 double temperature=0, humidity=0, pressure=0;
@@ -79,11 +79,12 @@ void setup(){
     digitalWrite(buzzer,LOW);digitalWrite(relay,LOW);
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
-    sensorBus.begin();sensorBus.setClock(100000);
-    if(!ambient.begin(sensorBus)){
+    WeatherSerial.println("BOOT FARM_WS_01");
+    if(!ambient.begin()){
         WeatherSerial.println("HARDWARE_ERROR BME280_INIT");
         for(;;)delay(1000);
     }
+    WeatherSerial.println("BME280_I2C_READY");
     noInterrupts();tips=0;windPulses=0;interrupts();
     readAmbient();
     nextTick=millis()+TICK_MS;

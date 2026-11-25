@@ -14,7 +14,7 @@ def require(condition, message):
 
 def verify(log_path, db_path):
     log = Path(log_path).read_text(encoding="utf-8")
-    markers = ("READY FARM_WS_01 SIMULATION", "WIND_ALARM_ON", "RAIN_TIPS=1", "WIND_ALARM_OFF", "TELEMETRY {")
+    markers = ("BOOT FARM_WS_01", "BME280_I2C_READY", "READY FARM_WS_01 SIMULATION", "WIND_ALARM_ON", "RAIN_TIPS=1", "WIND_ALARM_OFF", "TELEMETRY {")
     # Wokwi 0.29.1 may coalesce adjacent println messages in the saved serial
     # stream. Parse the complete ordered smoke grammar, not individual lines
     # or permissive substrings. Only whitespace is optional between tokens.

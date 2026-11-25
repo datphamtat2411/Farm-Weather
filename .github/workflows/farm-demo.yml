@@ -128,7 +128,7 @@ jobs:
             echo "::error::Missing WOKWI_CLI_TOKEN (repository Actions secret)."
             exit 1
           fi
-          wokwi-cli . --scenario scenarios/weather.yaml --timeout 60000 --serial-log-file ../evidence/serial.log 2>&1 | tee ../evidence/wokwi.log
+          wokwi-cli . --scenario scenarios/weather.yaml --fail-text HARDWARE_ERROR --timeout 60000 --serial-log-file ../evidence/serial.log 2>&1 | tee ../evidence/wokwi.log
       - name: Verify telemetry and persistent SQLite idempotency
         run: |
           python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json

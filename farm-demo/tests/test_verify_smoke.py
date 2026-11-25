@@ -11,7 +11,7 @@ class SmokeVerifierTest(unittest.TestCase):
                  ts_s=1795453500, valid_mask=127, status=0, rainfall=0.2794,
                  wind_gust=12.0, wind_speed=4.0, temperature=25,
                  humidity=70, pressure=1000, battery_voltage=3.2, wind_direction=135)
-        return "READY FARM_WS_01 SIMULATION\nWIND_ALARM_ON\nRAIN_TIPS=1\nWIND_ALARM_OFF\nTELEMETRY " + json.dumps(r) + "\n"
+        return "BOOT FARM_WS_01\nBME280_I2C_READY\nREADY FARM_WS_01 SIMULATION\nWIND_ALARM_ON\nRAIN_TIPS=1\nWIND_ALARM_OFF\nTELEMETRY " + json.dumps(r) + "\n"
 
     def test_accept_valid_fixture(self):
         with tempfile.TemporaryDirectory() as tmp:
