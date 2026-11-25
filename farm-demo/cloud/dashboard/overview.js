@@ -62,13 +62,13 @@ self.onInit = function () {
     pairs('outputs',[['Còi',output(s.buzzer)],['Yêu cầu ngừng tưới',output(s.stop_request)]]);
     pairs('config-state',[['Phiên bản mong muốn',num(s.desired.config_version)],['Phiên bản đã áp dụng',num(s.applied.applied_config_version)],['Ngưỡng mong muốn',num(s.desired.wind_alarm_on)+' / '+num(s.desired.wind_alarm_off)+' m/s'],['Ngưỡng đã áp dụng',num(s.applied.applied_wind_alarm_on)+' / '+num(s.applied.applied_wind_alarm_off)+' m/s'],['Chu kỳ đã áp dụng',s.applied.applied_period_s?num(s.applied.applied_period_s/60)+' phút':'—']]);
     if(!el('config').dataset.initialized){for(const k of ['wind_alarm_on','wind_alarm_off','report_period_s'])if(s.desired[k]!=null)el('config').elements[k].value=s.desired[k];el('config').dataset.initialized='1';}
-    permissions(s.capabilities);
+    permissions(s.capabilities);el('export').hidden=!historyResult||!s.capabilities.includes('export');
   }
   async function refresh(){
     if(dead||refreshing||!el('station').value)return;refreshing=true;const g=generation,station=el('station').value;
     try{const s=await call(station,'overview',{});if(dead||g!==generation)return;render(s);
       if(command){const c=await call(station,'rpc_status',{command_id:command});if(!dead&&g===generation){text('command',(states[c.state]||c.state)+' · '+command);if(['APPLIED','REJECTED','EXPIRED','UNKNOWN'].includes(c.state))command=null;}}
-    }catch(e){if(!dead&&g===generation){snapshot=null;permissions([]);fail('Không thể cập nhật. Dữ liệu đang hiển thị là lần đọc trước, không dùng để quyết định hiện tại.');text('fresh','Mất kết nối ứng dụng');el('arrow').hidden=true;}}
+    }catch(e){if(!dead&&g===generation){snapshot=null;permissions([]);el('export').hidden=true;fail('Không thể cập nhật. Dữ liệu đang hiển thị là lần đọc trước, không dùng để quyết định hiện tại.');text('fresh','Mất kết nối ứng dụng');el('arrow').hidden=true;}}
     finally{refreshing=false;if(!dead&&g!==generation)refresh();}
   }
   async function operate(action,body){
@@ -79,7 +79,7 @@ self.onInit = function () {
     finally{busy=false;if(!dead){el('station').disabled=false;for(const b of root.querySelectorAll('button'))b.disabled=false;refresh();}}
   }
   for(const s of stations){const o=node('option',s.name);o.value=s.id;el('station').append(o);}
-  el('station').onchange=()=>{generation++;snapshot=null;command=null;permissions([]);el('metrics').replaceChildren();for(const id of ['health','outputs','config-state','alarms','chart'])el(id).replaceChildren();text('fresh','Đang tải…');text('time','—');text('direction','—');text('rain','—');text('trend-note','');el('arrow').hidden=true;text('command','Chưa gửi lệnh trong phiên này.');delete el('config').dataset.initialized;refresh();};
+  el('station').onchange=()=>{historyReset('Đã đổi trạm. Chọn Xem thống kê để tải lịch sử.');generation++;snapshot=null;command=null;permissions([]);el('metrics').replaceChildren();for(const id of ['health','outputs','config-state','alarms','chart'])el(id).replaceChildren();text('fresh','Đang tải…');text('time','—');text('direction','—');text('rain','—');text('trend-note','');el('arrow').hidden=true;text('command','Chưa gửi lệnh trong phiên này.');delete el('config').dataset.initialized;refresh();};
   el('refresh').onclick=refresh;
   el('stop').onclick=()=>{if(window.confirm('Gửi yêu cầu ngừng tưới? Không tự bật lại bơm.'))operate('rpc',{method:'request_stop_irrigation',params:{}});};
   el('test').onclick=()=>operate('rpc',{method:'test_buzzer',params:{}});
@@ -87,6 +87,75 @@ self.onInit = function () {
     const on=Number(f.wind_alarm_on.value),off=Number(f.wind_alarm_off.value),period=Number(f.report_period_s.value),version=snapshot.desired.config_version;
     if(!Number.isInteger(version)||!Number.isInteger(on)||!Number.isInteger(off)||off<=0||off>=on||on>10||![300,900].includes(period)){text('command','Cấu hình không hợp lệ.');return;}
     operate('rpc',{method:'set_config',params:{config_version:version+1,wind_alarm_on:on,wind_alarm_off:off,report_period_s:period}});};
+
+  // History requests are independent of the live polling loop. A generation
+  // invalidates in-flight results on station/range changes, including exports.
+  let historyResult=null,historyRange=null,historyPage=0,historyGeneration=0;
+  const hf=el('history-form'), hr=hf.elements;
+  const hfields=fields.filter(f=>f[0]!=='wind_direction').concat([fields.find(f=>f[0]==='wind_direction')]);
+  const localInput=ms=>new Date(ms+7*3600000).toISOString().slice(0,16);
+  function parseLocal(v){return Date.parse(v+':00+07:00');}
+  function preset(){if(hr.range.value==='custom')return;const end=Math.floor(Date.now()/60000)*60000;hr.end.value=localInput(end);hr.start.value=localInput(end-Number(hr.range.value)*86400000);}
+  function historyReset(message){historyGeneration++;historyResult=null;historyRange=null;el('history-results').hidden=true;el('export').hidden=true;text('history-message',message||'');}
+  function table(id,headers,rows){const t=el(id),head=node('thead'),body=node('tbody'),tr=node('tr');for(const h of headers)tr.append(node('th',h));head.append(tr);for(const row of rows){const r=node('tr');for(const v of row)r.append(node('td',v));body.append(r);}t.replaceChildren(head,body);}
+  function rawPage(){if(!historyResult)return;const rows=historyResult.records,first=historyPage*50;
+    table('history-rows',['Thời điểm đo','Mã bản ghi','Kỳ (phút)','Chất lượng',...hfields.map(f=>f[1]+' ('+f[2]+')')],
+      rows.slice(first,first+50).map(r=>[time(r.ts),r.record_id,num(r.period_s/60),num(r.valid_mask),...hfields.map(f=>num(r.values[f[0]],f[3]))]));
+    text('history-page',rows.length?((first+1)+'–'+Math.min(first+50,rows.length)+' / '+rows.length):'0 bản ghi');
+    el('history-prev').disabled=historyPage===0;el('history-next').disabled=first+50>=rows.length;
+  }
+  function historyChart(target,label,unit,buckets,key,metric,dec){
+    const article=node('article'),heading=node('h3',label+' · '+unit),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 360 160');svg.setAttribute('role','img');svg.setAttribute('aria-label',label);
+    const add=(tag,a,t)=>{const n=document.createElementNS(svg.namespaceURI,tag);for(const [k,v] of Object.entries(a))n.setAttribute(k,String(v));if(t!==undefined)n.textContent=t;svg.append(n);return n;};
+    const vals=buckets.map(b=>b.metrics[key][metric]),valid=vals.filter(v=>typeof v==='number'&&Number.isFinite(v));
+    article.append(heading,svg);target.append(article);
+    if(!valid.length){add('text',{x:180,y:80,'text-anchor':'middle',fill:'#52685e','font-size':12},'Không có kỳ hợp lệ');return;}
+    const lo=key==='rainfall'?0:key==='wind_direction'?0:Math.min(...valid)-Math.max(0.1,(Math.max(...valid)-Math.min(...valid))*0.1);
+    const hi=key==='wind_direction'?360:Math.max(...valid)+Math.max(0.1,(Math.max(...valid)-lo)*0.1);
+    const x=i=>48+(i+.5)*300/buckets.length,y=v=>125-(v-lo)/(hi-lo)*108;
+    for(let i=0;i<4;i++){const v=lo+(hi-lo)*i/3;add('line',{x1:48,x2:348,y1:y(v),y2:y(v),stroke:'#dce6df'});add('text',{x:43,y:y(v)+3,'text-anchor':'end','font-size':9,fill:'#52685e'},num(v,dec));}
+    let prev=null;
+    vals.forEach((v,i)=>{const b=buckets[i],s=b.metrics[key],complete=s.coverage_s*1000===b.endTs-b.startTs;
+      if(v===null||!Number.isFinite(v)){prev=null;return;}
+      const color=complete?'#176f53':'#a16c25';
+      if(key==='rainfall'){const w=Math.max(1,300/buckets.length*.72);add('rect',{x:x(i)-w/2,y:y(v),width:w,height:Math.max(1,y(0)-y(v)),fill:color});}
+      else{if(prev&&prev.complete&&complete&&key!=='wind_direction')add('line',{x1:x(i-1),y1:y(prev.v),x2:x(i),y2:y(v),stroke:color,'stroke-width':1.8});add('circle',{cx:x(i),cy:y(v),r:2.6,fill:color});}
+      const title=document.createElementNS(svg.namespaceURI,'title');title.textContent=time(b.endTs)+' · '+num(v,dec)+' '+unit+' · '+num(s.coverage_pct,1)+'%';svg.lastChild.append(title);prev={v,complete};
+    });
+    for(const i of [...new Set([0,Math.floor((buckets.length-1)/2),buckets.length-1])])add('text',{x:x(i),y:145,'text-anchor':'middle','font-size':8,fill:'#52685e'},new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',...(historyResult.bucket_s===3600?{hour:'2-digit',minute:'2-digit'}:{day:'2-digit',month:'2-digit'})}).format(buckets[i].startTs));
+  }
+  function renderHistory(r){historyResult=r;historyPage=0;const s=r.summary,m=s.metrics;
+    const cards=[['Bản ghi trong khoảng',num(r.records.length)],['Độ phủ bản ghi',num(s.coverage_pct,1)+'%'],['Đủ 7 nhóm hợp lệ',num(s.valid_coverage_pct,1)+'%'],['Tổng mưa đã ghi nhận',num(m.rainfall.total,4)+(m.rainfall.total===null?'':' mm')],['Gió giật cực đại',num(m.wind_gust.max,1)+(m.wind_gust.max===null?'':' m/s')],['Cảnh báo bắt đầu',num(r.alarm_count)]];
+    const grid=el('history-summary');grid.replaceChildren();for(const [k,v] of cards){const a=node('article');a.className='fw-metric';a.append(node('span',k),node('strong',v));grid.append(a);}
+    const target=el('history-charts');target.replaceChildren();
+    for(const [k,label,unit,dec] of hfields)historyChart(target,label,unit,r.buckets,k,k==='rainfall'?'total':k==='wind_gust'?'max':k==='wind_direction'?'vector_deg':k==='battery_voltage'?'last':'avg',dec);
+    text('history-bucket',(r.bucket_s===3600?'Theo giờ':'Theo ngày')+' · xanh: đủ kỳ hợp lệ; vàng: thiếu một phần; khoảng trống: không có dữ liệu.');
+    table('history-stats',['Thông số','Min','Max','Trung bình / tổng / hướng','Cuối kỳ','Độ phủ hợp lệ'],hfields.map(([k,label,unit,d])=>{const a=m[k];return [label+' ('+unit+')',num(a.min,d),num(a.max,d),num(k==='rainfall'?a.total:k==='wind_direction'?a.vector_deg:a.avg,d),num(a.last,d),num(a.coverage_pct,1)+'%'];}));
+    text('history-gaps',s.gaps.length+' khoảng thiếu · '+s.boundary_periods+' kỳ cắt ranh giới · '+s.overlapping_periods+' kỳ chồng lấn bị loại. '+s.gaps.slice(0,5).map(g=>time(g.startTs)+' → '+time(g.endTs)).join(' | ')+(s.gaps.length>5?' …':''));
+    rawPage();el('history-results').hidden=false;el('export').hidden=!snapshot||!snapshot.capabilities.includes('export');
+  }
+  async function loadHistory(){const start=parseLocal(hr.start.value),end=parseLocal(hr.end.value);
+    historyReset('Đang truy vấn lịch sử…');const g=historyGeneration,station=el('station').value;
+    if(!Number.isFinite(start)||!Number.isFinite(end)||start>=end||end-start>31*86400000){text('history-message','Khoảng thời gian không hợp lệ (tối đa 31 ngày).');return;}
+    try{const r=await call(station,'history',{startTs:start,endTs:end});if(dead||g!==historyGeneration)return;historyRange={startTs:start,endTs:end};renderHistory(r);text('history-message','Đã tải · dữ liệu theo thời điểm đo. Làm mới để nhận bản ghi gửi bù.');}
+    catch(e){if(!dead&&g===historyGeneration)historyReset('Không thể tải lịch sử. Kiểm tra kết nối hoặc quyền truy cập.');}
+  }
+  async function downloadHistory(){if(!historyRange||!snapshot||!snapshot.capabilities.includes('export'))return;
+    const g=historyGeneration,station=el('station').value;el('export').disabled=true;
+    try{const r=await call(station,'export',historyRange);if(dead||g!==historyGeneration)return;
+      const url=URL.createObjectURL(new Blob(['\ufeff',r.csv],{type:'text/csv;charset=utf-8'})),a=node('a');a.href=url;a.download='farm-weather-'+historyRange.startTs+'-'+historyRange.endTs+'.csv';root.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);text('history-message','Đã xuất '+r.record_count+' bản ghi gốc.');
+    }catch(e){if(!dead&&g===historyGeneration)text('history-message','Không thể xuất CSV. Kiểm tra quyền và kết nối.');}
+    finally{if(!dead)el('export').disabled=false;}
+  }
+  function historyTab(show){el('overview-view').hidden=show;el('history-view').hidden=!show;el('overview-tab').setAttribute('aria-pressed',String(!show));el('history-tab').setAttribute('aria-pressed',String(show));if(show&&!historyResult)loadHistory();}
+  preset();hr.range.onchange=()=>{preset();historyReset('Chọn Xem thống kê để tải khoảng mới.');};
+  for(const i of [hr.start,hr.end])i.onchange=()=>{hr.range.value='custom';historyReset('Chọn Xem thống kê để tải khoảng mới.');};
+  hf.onsubmit=e=>{e.preventDefault();loadHistory();};
+  el('overview-tab').onclick=()=>historyTab(false);el('history-tab').onclick=()=>historyTab(true);
+  el('export').onclick=downloadHistory;el('history-prev').onclick=()=>{if(historyPage>0){historyPage--;rawPage();}};
+  el('history-next').onclick=()=>{if(historyResult&&(historyPage+1)*50<historyResult.records.length){historyPage++;rawPage();}};
+
   timer=setInterval(refresh,10000);refresh();
   self.cleanup=()=>{dead=true;clearInterval(timer);for(const s of subs)s.unsubscribe();subs.clear();};
 };

@@ -164,7 +164,7 @@ def run(url, ca, mqtt_port, audit):
                         deny(lambda:call(name,action,body))
                     else:
                         result=call(name,action,body)
-                        assert result.get("record_id" if action=="export" else "acknowledged")
+                        assert (result["record_count"]>=1 and "record_id" in result["csv"]) if action=="export" else result.get("acknowledged")
                 if name=="viewer":
                     deny(lambda:call(name,"rpc",req))
                 else:

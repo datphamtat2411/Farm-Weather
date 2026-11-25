@@ -26,7 +26,7 @@ CAPABILITIES = {
     "viewer": frozenset(),
 }
 HISTORY_KEYS = "record_id,sequence_number,temperature,humidity,pressure,wind_speed,wind_gust,wind_direction,rainfall,battery_voltage,period_s,status,valid_mask"
-ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc|rpc_status|overview)$")
+ROUTE = re.compile(r"/api/farm/stations/([0-9a-f-]{36})/(export|ack|rpc|rpc_status|overview|history)$")
 
 class Denied(Exception):
     def __init__(self, status, message):
@@ -198,17 +198,20 @@ class FarmApi:
                         if e.status != 400 or not user_api.request("GET", "/api/alarm/"+ident).get("acknowledged"):
                             raise
                 response = {"acknowledged":True}
-            elif action == "export":
-                require("export" in CAPABILITIES[role],403,"operation denied")
+            elif action in ("history","export"):
+                if action == "export":
+                    require("export" in CAPABILITIES[role],403,"operation denied")
                 require(set(body)=={"startTs","endTs"},400,"invalid export fields")
                 start,end = body["startTs"],body["endTs"]
                 require(type(start) is int and type(end) is int and 0 <= start < end
-                        and end-start <= 31*86400000,400,"invalid export range")
+                        and end-start <= 31*86400000,400,"invalid history range")
                 detail = body
-                # Task 15 formats and aggregates these raw, scoped points.
-                response = user_api.request("GET",
-                    f"/api/plugins/telemetry/DEVICE/{station}/values/timeseries",
-                    keys=HISTORY_KEYS,startTs=start,endTs=end,agg="NONE",limit=10000)
+                from history import history, fetch_points, records, csv_report
+                if action == "history":
+                    response = history(user_api,station,start,end)
+                else:
+                    rows = records(fetch_points(user_api,station,start,end),start,end)
+                    response = {"csv":csv_report(rows),"record_count":len(rows)}
             else:
                 raise Denied(404,"unknown operation")
             self.audit(actor,station,operation,detail,"ACCEPTED")
