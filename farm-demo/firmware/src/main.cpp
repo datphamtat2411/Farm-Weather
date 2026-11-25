@@ -6,6 +6,7 @@
 #include "wire.hpp"
 #include "sim_flash.hpp"
 #include "class_a.hpp"
+#include "commands.hpp"
 using namespace farm::sim;
 
 #if !defined(FARM_WOKWI_SIMULATION) || !defined(STM32F103xB)
@@ -28,6 +29,7 @@ volatile bool seenTip=false,seenWind=false;
 farm::SimI2c sensorBus(sda,scl);
 farm::AmbientSensor ambient(sensorBus);
 farm::sim::Flash flash(sensorBus);
+farm::control::Controller<farm::sim::Flash> controller(flash);
 farm::storage::Ring<farm::sim::Flash> ring(flash);
 farm::link::ClassA<decltype(ring)> radio(ring);
 uint32_t sequence=0;
@@ -136,6 +138,33 @@ bool reserveRecord(){
     WeatherSerial.println("HARDWARE_ERROR FLASH_SEQUENCE");
     return false;
 }
+bool safeForConfig(){
+    return station.windReady && !(station.status&farm::WIND) && station.currentWindPulses*2<station.windOff*9 && !windHealth.fault;
+}
+void driveOutputs(){
+    digitalWrite(buzzer,(actuation.buzzer||controller.testing(station.seconds))?HIGH:LOW);
+    digitalWrite(relay,(actuation.stopRequest||controller.snapshot().stop)?HIGH:LOW);
+}
+void applyCommand(const farm::wire::Payload& p){
+    farm::control::Command c;
+    if(!radio.commandWindow(station.seconds)||!farm::control::decode(p,c)){
+        WeatherSerial.println("RPC_FRAME_REJECTED");return;
+    }
+    uint32_t now=0;
+    const bool trusted=clockTrusted&&farm::storage::timestamp(EPOCH,clockOffset,station.seconds,now);
+    // A response needs a durable sequence before any side effect.
+    if(!reserveRecord())return;
+    const auto r=controller.execute(c,now,trusted,safeForConfig(),station.seconds);
+    const auto& config=controller.snapshot();
+    station.configure(config.on,config.off,config.period);
+    driveOutputs();
+    const auto result=farm::control::encode(sequence,recordTimestamp,c,r,config,station.period,
+        actuation.buzzer||controller.testing(station.seconds),actuation.stopRequest||config.stop);
+    queueRecord(farm::control::result_port,result);
+    WeatherSerial.print("RPC_RESULT outcome=");WeatherSerial.print(unsigned(r.outcome));
+    WeatherSerial.print(" reason=");WeatherSerial.print(unsigned(r.reason));
+    WeatherSerial.print(" version=");WeatherSerial.println(config.version);
+}
 void applyAck(uint8_t port,const farm::wire::Payload& p){
     const bool warned=ring.nearFull();
     const unsigned window=radio.window(station.seconds);
@@ -177,7 +206,7 @@ void handleCommand(){
             const int b=nibble(*hex++);
             if(a<0||b<0||!p.byte(uint8_t(a*16+b))){p.ok=false;break;}
         }
-        if(linkUp)applyAck(uint8_t(port),p);
+        if(linkUp){if(port==farm::wire::CONFIG_PORT)applyCommand(p);else applyAck(uint8_t(port),p);}
     }else WeatherSerial.println("COMMAND_REJECTED");
 }
 void readCommands(){
@@ -312,8 +341,8 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     s.print(",\"fault_mask\":");s.print(faultMask());
     s.print(",\"changed_fault_mask\":");s.print(changedFaults);
     s.print(",\"mode\":\"");s.print(modeName());s.print("\"");
-    s.print(",\"buzzer\":");s.print(actuation.buzzer?"true":"false");
-    s.print(",\"stop_request\":");s.print(actuation.stopRequest?"true":"false");
+    s.print(",\"buzzer\":");s.print((actuation.buzzer||controller.testing(station.seconds))?"true":"false");
+    s.print(",\"stop_request\":");s.print((actuation.stopRequest||controller.snapshot().stop)?"true":"false");
     if(station.windReady){s.print(",\"wind_window_mps\":");s.print(farm::windSpeed(station.currentWindPulses,3),2);}
     s.print(",\"rain_10min_mm\":");s.print(farm::rainfall(station.rainWindow),4);
     if(atmosphere.temperature.valid){s.print(",\"temperature\":");s.print(latestTemperature,1);}
@@ -326,7 +355,7 @@ void emitEvent(unsigned changed,unsigned changedFaults){
         case farm::LocalMode::AwaitInspection:event.mode=farm::wire::Mode::AwaitInspection;break;
         default:event.mode=farm::wire::Mode::Normal;break;
     }
-    event.buzzer=actuation.buzzer;event.stop=actuation.stopRequest;
+    event.buzzer=actuation.buzzer||controller.testing(station.seconds);event.stop=actuation.stopRequest||controller.snapshot().stop;
     event.has_wind=station.windReady;event.has_temp=atmosphere.temperature.valid;event.has_battery=batteryValid;
     if(event.has_wind)event.wind=unsigned(farm::wire::x10(farm::windSpeed(station.currentWindPulses,3)));
     event.rain=station.rainWindow;
@@ -347,6 +376,8 @@ void setup(){
     digitalWrite(buzzer,LOW);digitalWrite(relay,LOW);
     sensorBus.begin();
     if(!ring.begin())WeatherSerial.println("HARDWARE_ERROR FLASH_RECOVERY");
+    if(!controller.begin())WeatherSerial.println("RPC_STORAGE_UNAVAILABLE");
+    const auto& config=controller.snapshot();station.configure(config.on,config.off,config.period);
     WeatherSerial.print("FLASH_READY highwater=");WeatherSerial.print(ring.highwater);
     WeatherSerial.print(" pending=");WeatherSerial.print(ring.count);WeatherSerial.print(" corrupt=");WeatherSerial.println(ring.corrupt);
     power.begin(micros());
@@ -388,9 +419,9 @@ void loop(){
     const bool pressed=!digitalRead(confirm_button);
     const auto before=actuation.mode;
     actuation.update(station.seconds,station.status,station.windReady,pressed&&!confirmWasPressed);
+    if(pressed&&!confirmWasPressed)controller.confirm(safeForConfig());
     confirmWasPressed=pressed;
-    digitalWrite(buzzer,actuation.buzzer?HIGH:LOW);
-    digitalWrite(relay,actuation.stopRequest?HIGH:LOW);
+    driveOutputs();
     const unsigned changed=station.status^prevStatus;
     const unsigned changedFaults=prevFaultMask^faults;
     if(changed || changedFaults || before!=actuation.mode)emitEvent(changed,changedFaults);

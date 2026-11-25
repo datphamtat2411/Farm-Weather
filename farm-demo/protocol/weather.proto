@@ -43,3 +43,29 @@ message WeatherEvent {
 message WeatherAck {
   repeated uint32 sequence_number = 1 [packed = false];
 }
+
+// FPort 21: server-side RPC downlink (UUID bytes, UTC seconds).
+message FarmCommand {
+  required bytes command_id = 1;
+  required uint32 created_at_s = 2;
+  required uint32 expires_at_s = 3;
+  required uint32 method = 4;
+  optional uint32 config_version = 5;
+  optional uint32 wind_alarm_on = 6;
+  optional uint32 wind_alarm_off = 7;
+  optional uint32 report_period_s = 8;
+}
+// FPort 22: confirmed device response, independent of weather telemetry.
+message CommandResult {
+  required uint32 sequence_number = 1;
+  required uint32 ts_s = 2;
+  required bytes command_id = 3;
+  required uint32 outcome = 4;
+  required uint32 reason = 5;
+  required uint32 config_version = 6;
+  required uint32 wind_alarm_on = 7;
+  required uint32 wind_alarm_off = 8;
+  required uint32 report_period_s = 9;
+  required uint32 applied_period_s = 10;
+  required uint32 outputs = 11;
+}

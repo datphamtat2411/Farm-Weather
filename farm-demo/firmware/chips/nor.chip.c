@@ -8,7 +8,7 @@
 // Custom I2C bridge protocol: opcode, big-endian address, optional data.
 // This is a simulation peripheral, not an I2C part from the hardware BOM.
 typedef struct {
-  uint8_t memory[65536];
+  uint8_t memory[65536], command_memory[4096];
   uint32_t address;
   uint8_t command, phase, clock_index;
   bool clock_started;
@@ -27,11 +27,12 @@ static uint8_t read_cb(void *data) {
     if(s->clock_index>=4)return 0xff;
     return (uint8_t)(s->clock_snapshot>>(8*s->clock_index++));
   }
+  if(s->command==4)return s->address<sizeof(s->command_memory)?s->command_memory[s->address++]:0xff;
   return s->address<sizeof(s->memory)?s->memory[s->address++]:0xff;
 }
 static bool write_cb(void *data,uint8_t value) {
   state_t *s=data;
-  if(s->phase==0){s->command=value;s->phase=1;return value<=3;}
+  if(s->phase==0){s->command=value;s->phase=1;return value<=5;}
   if(s->phase==1){s->address=(uint32_t)value<<8;s->phase=2;return true;}
   if(s->phase==2){
     s->address|=value;s->phase=3;
@@ -50,6 +51,10 @@ static bool write_cb(void *data,uint8_t value) {
     }
     return true;
   }
+  if(s->command==5){
+    if(s->address>=sizeof(s->command_memory)||(s->command_memory[s->address]&value)!=value)return false;
+    s->command_memory[s->address++]&=value;return true;
+  }
   if(s->command!=1||s->address>=sizeof(s->memory))return false;
   // Forbid 0->1 transitions.
   if((s->memory[s->address]&value)!=value)return false;
@@ -59,6 +64,7 @@ static bool write_cb(void *data,uint8_t value) {
 void chip_init(void) {
   state_t *s=calloc(1,sizeof(*s));
   memset(s->memory,0xff,sizeof(s->memory));
+  memset(s->command_memory,0xff,sizeof(s->command_memory));
   i2c_config_t cfg={.address=0x50,.scl=pin_init("SCL",INPUT_PULLUP),
     .sda=pin_init("SDA",INPUT_PULLUP),.connect=connect_cb,.read=read_cb,
     .write=write_cb,.user_data=s};

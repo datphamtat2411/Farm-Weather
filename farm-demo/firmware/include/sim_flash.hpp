@@ -15,6 +15,8 @@ public:
     bool program(unsigned at,const uint8_t* data,unsigned n){
         return n&&!(at%8)&&!(n%8)&&at<storage::bytes&&n<=storage::bytes-at&&bus.memoryCommand(1,at,data,n);
     }
+    bool commandRead(unsigned at,uint8_t* data,unsigned n){return n&&at<4096&&n<=4096-at&&bus.memoryRead(at,data,n,4);}
+    bool commandProgram(unsigned at,const uint8_t* data,unsigned n){return n&&!(at%8)&&!(n%8)&&at<4096&&n<=4096-at&&bus.memoryCommand(5,at,data,n);}
     bool readClock(uint32_t& logicalSeconds){
         uint8_t data[4];
         if(!bus.memoryRead(0,data,sizeof(data),3))return false;

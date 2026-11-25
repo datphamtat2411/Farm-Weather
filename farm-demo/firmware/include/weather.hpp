@@ -50,6 +50,12 @@ struct Station {
     unsigned currentWindPulses=0;
     unsigned quiet=0, hot=0, cool=0, low=0, charged=0;
     unsigned period=design::normal_period_s; // requested mode, confirmed by battery policy
+    unsigned configuredPeriod=design::normal_period_s, windOn=10, windOff=7;
+    void configure(unsigned on,unsigned off,unsigned requested){
+        if(windOn!=on||windOff!=off)quiet=0;
+        windOn=on;windOff=off;configuredPeriod=requested;
+        period=(status&BATTERY)?design::low_power_period_s:configuredPeriod;
+    }
     unsigned activePeriod=design::normal_period_s; // immutable until current record closes
     bool tick(unsigned windPulses,unsigned rainTips,bool windValid=true) {
         const unsigned i=seconds%design::rain_window_s;
@@ -65,9 +71,9 @@ struct Station {
         if(!windReady)quiet=0; // missing data cannot clear an existing warning
         if(windReady) {
             if(sum>gust)gust=sum;
-            if(sum>=design::wind_alarm_pulses){status|=WIND;quiet=0;}
+            if(sum*2>=windOn*9){status|=WIND;quiet=0;}
             else if(status&WIND){
-                if(sum*2<design::wind_recovery_twice_pulses){if(++quiet>=design::wind_recovery_s){status&=~WIND;quiet=0;}}
+                if(sum*2<windOff*9){if(++quiet>=design::wind_recovery_s){status&=~WIND;quiet=0;}}
                 else quiet=0;
             }
         }
@@ -87,7 +93,7 @@ struct Station {
         low=mv<=design::battery_low_mv?low+1:0;
         charged=mv>=design::battery_recovery_mv?charged+1:0;
         if(low>=design::confirmation_count){status|=BATTERY;period=design::low_power_period_s;}
-        if(charged>=design::confirmation_count){status&=~BATTERY;period=design::normal_period_s;}
+        if(charged>=design::confirmation_count){status&=~BATTERY;period=configuredPeriod;}
     }
     void batteryInvalid() {low=charged=0;}
     void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;windPeriodValid=true;activePeriod=period;}

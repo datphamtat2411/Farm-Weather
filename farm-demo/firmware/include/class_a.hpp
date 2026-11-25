@@ -61,6 +61,7 @@ public:
         queue.markSent(current.sequence);
         send(current,frameCounter);
     }
+    bool commandWindow(uint32_t now)const{return window(now)!=0;}
     unsigned downlink(uint32_t now,uint8_t port,const wire::Payload& p){
         if(port!=wire::ACK_PORT||!window(now))return 0;
         Ack a;

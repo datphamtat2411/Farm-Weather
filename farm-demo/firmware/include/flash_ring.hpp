@@ -56,7 +56,7 @@ template<class Flash> class Ring {
         out.sequence=load32(b);
         out.port=b[8];
         const unsigned tail=b[9];
-        if(!out.sequence || (out.port!=wire::PERIODIC_PORT&&out.port!=wire::EVENT_PORT) ||
+        if(!out.sequence || (out.port!=wire::PERIODIC_PORT&&out.port!=wire::EVENT_PORT&&out.port!=22) ||
            tail>46 || load32(b+4)!=checksum(b))return false;
         out.payload.field(1,out.sequence);
         for(unsigned i=0;i<tail;++i)out.payload.byte(b[10+i]);
@@ -165,7 +165,7 @@ public:
         if(!reserved||!f.sequence||f.sequence!=highwater)return StoreResult::Invalid;
         reserved=false;
         if(!f.payload.ok||
-           (f.port!=wire::PERIODIC_PORT&&f.port!=wire::EVENT_PORT))return StoreResult::Invalid;
+           (f.port!=wire::PERIODIC_PORT&&f.port!=wire::EVENT_PORT&&f.port!=22))return StoreResult::Invalid;
         for(unsigned i=0;i<slots;++i)if(ports[i]>=10&&sequences[i]==f.sequence)return StoreResult::Invalid;
         wire::Payload prefix;prefix.field(1,f.sequence);
         if(f.payload.size<prefix.size||f.payload.size>wire::capacity||
@@ -205,7 +205,7 @@ public:
         for(unsigned pass=0;pass<2&&pick==slots;++pass){
             const uint8_t wanted=(eventFirst!=(pass!=0))?wire::EVENT_PORT:wire::PERIODIC_PORT;
             for(unsigned i=0;i<slots;++i){
-                if(ports[i]!=wanted||lengths[i]>maxBytes)continue;
+                if((ports[i]!=wanted&&!(wanted==wire::EVENT_PORT&&ports[i]==22))||lengths[i]>maxBytes)continue;
                 if(pick==slots||(newest?sequences[i]>sequences[pick]:sequences[i]<sequences[pick]))pick=i;
             }
         }
