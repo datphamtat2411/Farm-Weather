@@ -65,3 +65,7 @@ See [RPC lifecycle and deployment contract](docs/task-13-rpc.md). Native RPC adm
 ## Task 16 — Demo scenario console
 
 See [cloud scenario runner and presentation evidence](docs/task-16-demo.md). The development gate executes configurable scenarios using native firmware and the real Edge pipeline with isolated Cloud history model; actual Wokwi acceptance remains deferred to Task 17.
+
+## Task 17 — Product acceptance
+
+See [handover and deployment runbook](docs/task-17-handover.md). Explicit acceptance runs all six Wokwi scenarios, real recovered-wire replay into ThingsBoard, browser history and a fail-closed D01–D07 artifact manifest. No acceptance claim until the candidate gates actually pass.
