@@ -19,13 +19,14 @@ class ApiError(RuntimeError):
         self.status = status
 
 class Rest:
-    def __init__(self, url, ca_file=None, authorization=None):
+    def __init__(self, url, ca_file=None, authorization=None, timeout=10):
         parsed = urllib.parse.urlsplit(url)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("HTTPS endpoint required")
         self.url = url.rstrip("/")
         self.context = ssl.create_default_context(cafile=ca_file)
         self.authorization = authorization
+        self.timeout = timeout
 
     def request(self, method, path, data=None, **query):
         suffix = "?" + urllib.parse.urlencode(query) if query else ""
@@ -38,7 +39,7 @@ class Rest:
             body = json.dumps(data, allow_nan=False).encode()
         request = urllib.request.Request(self.url + path + suffix, data=body, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, context=self.context, timeout=10) as response:
+            with urllib.request.urlopen(request, context=self.context, timeout=self.timeout) as response:
                 raw = response.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as error:

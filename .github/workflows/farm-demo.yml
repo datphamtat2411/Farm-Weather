@@ -179,12 +179,15 @@ jobs:
           password="$(openssl rand -hex 24)"
           echo "::add-mask::$password"
           echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          admin_password="Aa1!$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_password"
+          echo "FARM_CI_SYSADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
           python -m pip install -r farm-demo/edge/requirements.txt
           python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
       - name: Install actual ThingsBoard (non-production)
         run: |
           docker compose -f farm-demo/cloud/compose.yml pull
-          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true -e LOAD_DEMO=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
           docker compose -f farm-demo/cloud/compose.yml up -d
       - name: Real MQTT/TLS and REST readback, D04, restart persistence
         run: |

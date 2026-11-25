@@ -19,6 +19,30 @@ from provision import Rest, provision, STATION
 from test_gateway import report, event, uplink, MAPPING, TOPIC
 from test_sync import Clock
 
+def initial_setup(url, ca, timeout=240):
+    """4.4 installs schema first; finish the official one-time setup wizard."""
+    deadline = time.monotonic()+timeout
+    api = Rest(url, ca, timeout=120)
+    while time.monotonic()<deadline:
+        try:
+            state = api.request("GET", "/api/noauth/setup/state")["status"]
+            break
+        except (OSError, RuntimeError, ValueError, KeyError):
+            time.sleep(3)
+    else:
+        raise AssertionError("ThingsBoard setup readiness timeout")
+    if state == "ACCOUNT_REQUIRED":
+        api.request("POST", "/api/noauth/setup/complete", {
+            "email": "farm-ci-admin@example.invalid",
+            "password": os.environ["FARM_CI_SYSADMIN_PASSWORD"],
+            "loadDemo": True})
+        state = api.request("GET", "/api/noauth/setup/state")["status"]
+    if state == "NON_PRODUCTION_CONFIRMATION_REQUIRED":
+        api.login("farm-ci-admin@example.invalid",os.environ["FARM_CI_SYSADMIN_PASSWORD"])
+        api.request("POST","/api/admin/nonProduction/confirm")
+        state=api.request("GET","/api/noauth/setup/state")["status"]
+    assert state == "READY", f"Unexpected setup state: {state}"
+
 def wait_login(url, ca, timeout=240):
     deadline = time.monotonic()+timeout
     while time.monotonic()<deadline:
@@ -32,9 +56,10 @@ def wait_login(url, ca, timeout=240):
 
 def compose(*args):
     subprocess.run(["docker","compose","-f",str(ROOT/"cloud/compose.yml"),*args],
-                   check=True, timeout=120)
+                   check=True, timeout=120, stdout=sys.stderr)
 
 def run(path, url, ca, port):
+    initial_setup(url, ca)
     api = wait_login(url, ca)
     topology, token = provision(api)
     assert provision(api) == (topology, token), "provisioning must be idempotent"
