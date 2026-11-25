@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import secrets
 import socket
 import sqlite3
 import subprocess
@@ -15,6 +16,7 @@ import paho.mqtt.client as mqtt
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"edge"))
 from serial_bridge import SerialBridge
+from mqtt_security import generate
 from protocol import decode
 from weather_pb2 import WeatherRecord
 
@@ -44,13 +46,15 @@ def run(native_log, db_path):
         with socket.socket() as sock:
             sock.bind(("127.0.0.1",0))
             port=sock.getsockname()[1]
-        config=tmp/"mqtt.conf"
-        config.write_text(f"listener {port} 127.0.0.1\nallow_anonymous true\npersistence false\n")
+        edge_password,sim_password=secrets.token_urlsafe(32),secrets.token_urlsafe(32)
+        config=generate(tmp/"broker",app=APP,dev=DEV,port=port,
+                        edge_password=edge_password,sim_password=sim_password)
         broker=subprocess.Popen(["mosquitto","-c",str(config)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         edge=None
         log_path=tmp/"edge.log"
         log=log_path.open("w")
         client=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        client.username_pw_set('farm-simulator',sim_password)
         ready=threading.Event()
         acked=threading.Event()
         lock=threading.Lock()
@@ -58,7 +62,8 @@ def run(native_log, db_path):
         def start_edge():
             child=subprocess.Popen([sys.executable,str(ROOT/"edge/gateway.py"),
                 "--mapping",str(ROOT/"edge/devices.example.json"),"--db",str(db_path),
-                "--port",str(port)],stdout=log,stderr=log)
+                "--port",str(port)],stdout=log,stderr=log,
+                env={**os.environ,"EDGE_MQTT_USERNAME":"farm-edge","EDGE_MQTT_PASSWORD":edge_password})
             return child
         def stop_edge():
             if edge and edge.poll() is None:
@@ -113,6 +118,32 @@ def run(native_log, db_path):
             return command
         try:
             wait_until(can_connect,"Mosquitto not ready")
+            # MQTT v5 PUBACK exposes denial (v3.1.1 silently drops unauthorized publishes).
+            def auth_probe(username=None,password=None,topic=None):
+                probe=mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,protocol=mqtt.MQTTv5)
+                if username is not None:
+                    probe.username_pw_set(username,password)
+                result=[]; published=[]
+                probe.on_connect=lambda c,u,f,r,p:result.append(r)
+                probe.on_publish=lambda c,u,mid,r,p:published.append(r)
+                probe.connect("127.0.0.1",port)
+                probe.loop_start()
+                try:
+                    wait_until(lambda:result,"missing auth CONNACK")
+                    if topic is None:
+                        require(result[0].is_failure,"anonymous/bad password accepted")
+                    else:
+                        require(not result[0].is_failure,"correct credentials refused")
+                        probe.publish(topic,"{}",qos=1)
+                        wait_until(lambda:published,"missing ACL PUBACK")
+                        require(published[0].is_failure,"forbidden topic publish accepted")
+                finally:
+                    probe.disconnect();probe.loop_stop()
+            auth_probe()
+            auth_probe("farm-edge","incorrect")
+            auth_probe("farm-simulator",sim_password,f"application/{APP}/device/{DEV}/command/down")
+            auth_probe("farm-edge",edge_password,f"application/{APP}/device/{DEV}/event/up")
+            auth_probe("farm-simulator",sim_password,f"application/{APP}/device/ffffffffffffffff/event/up")
             edge=start_edge()
             wait_until(lambda:edge_ready(1),"Edge subscription not ready")
             client.on_connect,client.on_subscribe,client.on_message=connected,subscribed,down
@@ -155,7 +186,7 @@ def run(native_log, db_path):
             return dict(result="PASS",scope="real MQTT broker and Edge service, native firmware wire vectors, logical RX adapter (not Wokwi/RF)",
                         unique_records=len(rows),ack_count=len(outcomes),quarantined=len(quarantine),
                         records=[json.loads(r[2]) for r in rows],quarantine_reasons=[r[0] for r in quarantine],
-                        replay_after_restart=True,ack_after_commit=True)
+                        replay_after_restart=True,ack_after_commit=True,authenticated_mqtt=True,negative_acl_checks=5)
         finally:
             client.disconnect()
             client.loop_stop()

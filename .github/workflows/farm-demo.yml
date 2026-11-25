@@ -197,6 +197,9 @@ jobs:
       - name: Native ThingsBoard Rule Engine lifecycle and historical isolation
         run: |
           python farm-demo/tests/verify_rule_engine.py --ca "$FARM_TLS_DIR/ca.crt" > farm-demo/evidence/rule-engine-report.json
+      - name: Native ThingsBoard JWT RBAC and TLS security
+        run: |
+          python farm-demo/tests/verify_security.py --ca "$FARM_TLS_DIR/ca.crt" --audit farm-demo/evidence/security-audit.sqlite > farm-demo/evidence/security-report.json
       - name: Rule Engine failure diagnostics
         if: failure()
         run: |
