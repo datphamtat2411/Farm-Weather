@@ -35,10 +35,15 @@ def require(ok, reason):
         raise AssertionError(reason)
 
 def select_artifact(root, sha):
-    candidates = sorted(root.glob("simulation-link-recovery-attempt-*"),
-                        key=lambda p:int(p.name.rsplit("-",1)[-1]))
-    require(bool(candidates), "missing actual Wokwi artifact")
-    folder=candidates[-1]
+    # download-artifact v6 flattens a single match even when pattern is used.
+    # Multiple matches keep their named subdirectories. Accept exactly one
+    # layout and always verify source SHA and both reports below.
+    candidates = sorted((p for p in root.glob("simulation-link-recovery-attempt-*")
+                         if p.is_dir()), key=lambda p:int(p.name.rsplit("-",1)[-1]))
+    flat=(root/"commit.txt").is_file()
+    require(not (flat and candidates),"ambiguous Wokwi artifact layout")
+    require(flat or bool(candidates),"missing actual Wokwi artifact")
+    folder=root if flat else candidates[-1]
     require((folder/"commit.txt").read_text().strip()==sha,"wrong simulation commit")
     require(json.loads((folder/"link-recovery.json").read_text())["result"]=="PASS","link verifier did not pass")
     require(json.loads((folder/"link-recovery-wire.json").read_text())["result"]=="PASS","wire verifier did not pass")
