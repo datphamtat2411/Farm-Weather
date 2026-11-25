@@ -4,7 +4,7 @@ MVP cho báo cáo trạm thời tiết mini. Mã nguồn tách khỏi ThingsBoar
 - firmware: STM32F103C8 (Blue Pill) là target mô phỏng Wokwi, không phải STM32L476RG của thiết kế thực tế.
 - BME280 custom chip mô phỏng thanh ghi I²C địa chỉ 0x76, đọc qua driver thanh ghi với I²C open-drain có timeout, ở forced mode. Anemometer custom chip tạo xung cạnh xuống thật tại PB0. Biến trở mô phỏng ADC hướng gió và điện áp pin. Nút nhấn mô phỏng gầu mưa. Hai LED thể hiện tín hiệu còi/relay yêu cầu ngừng tưới, không điều khiển tải thật.
 - Một giây logic = 100 ms mô phỏng. Cửa sổ, chu kỳ và ngưỡng giữ theo Chương 3–6. Timestamp cố định + thời gian logic là dữ liệu thử nghiệm.
-- edge: SQLite outbox nhận JSON từ log (legacy smoke); bộ giải mã Protobuf v1 độc lập; chống trùng theo device_id + sequence_number, phát hiện xung đột. Task 07 bổ sung Flash ring và mô phỏng Class A/ACK. Chưa triển khai RF thật, ACK sau commit SQLite (Task 08), đồng bộ ThingsBoard hay Dashboard.
+- edge: dịch vụ nhận MQTT ChirpStack-shaped, giải mã Protobuf, SQLite WAL/FULL và ACK FPort 20 sau commit. Mô phỏng radio qua adapter serial; chưa đồng bộ Cloud (Task 09).
 - Chưa xác minh Stop 2, mức dòng điện, cảm biến BME280 thật hoặc an toàn điện bằng Wokwi.
 - Development CI: native test, build hai target PlatformIO, compile custom chip và lint Wokwi offline, không tiêu hao phút mô phỏng. Hardware acceptance chỉ chạy khi yêu cầu nghiệm thu rõ ràng (Task 17).
 - Không lưu token vào mã nguồn. Đặt WOKWI_CLI_TOKEN tại Settings > Secrets and variables > Actions.
@@ -36,8 +36,12 @@ See [CI and acceptance policy](docs/ci-acceptance.md). Ordinary pushes to `demo/
 
 ## Task 06 — protocol
 
-See [wire protocol and evidence](docs/task-06-protocol.md). Firmware encodes actual measurements into FPort 10/11 Protobuf, serial hex is the simulation adapter. Edge decodes using protoc-generated Python bindings. The legacy SQLite smoke remains until Task 08; no RF or end-to-end delivery claim.
+See [wire protocol and evidence](docs/task-06-protocol.md). Firmware encodes actual measurements into FPort 10/11 Protobuf, serial hex is the simulation adapter. Edge decodes using protoc-generated Python bindings. Legacy SQLite smoke is isolated from live ingestion; no RF or Cloud delivery claim.
 
 ## Task 07 — station buffer and logical Class A
 
 See [ring buffer and D05 contract](docs/task-07-ring.md). Development gate is required, actual Wokwi acceptance remains deferred by quota policy.
+
+## Task 08 — Edge Gateway
+
+See [Edge ingestion contract](docs/task-08-edge.md).

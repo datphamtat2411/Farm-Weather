@@ -40,7 +40,7 @@ jobs:
           printf '%s\n' "$matrix" > farm-demo/evidence/scenario-matrix.json
       - name: Generate official Python Protobuf bindings
         run: |
-          python -m pip install -r farm-demo/protocol/requirements.txt
+          python -m pip install -r farm-demo/edge/requirements.txt
           python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
       - name: Native logic and negative-control tests
         run: |
