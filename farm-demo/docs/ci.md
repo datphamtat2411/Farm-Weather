@@ -1,0 +1,8 @@
+# Cloud-only development and evidence
+Task 01 foundation. The only credential needed for this stage is the repository Actions secret WOKWI_CLI_TOKEN. Never commit it. No local checkout or tool installation is required from the user.
+
+Every relevant push and pull request runs the foundation workflow; duplicate/superseded runs on the same branch may be cancelled. GitHub-hosted Ubuntu 24.04 performs native tests, PlatformIO firmware build, Wokwi CLI diagram lint, actual simulation and verification of serial telemetry after persistent SQLite reopen/replay. External fork PRs cannot access the simulation secret; their build alone is not a simulator PASS. The pinned Wokwi executable is checked against its published release digest before execution. Action commits are pinned; Python minor and PlatformIO platform/framework/compiler versions are recorded. Transitive packages, hosted runner patches and simulator service updates may still change; no bit-for-bit reproducibility claim.
+
+Evidence: firmware artifact (.bin and .elf), farm-demo-evidence (tested commit, versions, build logs, diagram lint, serial output, smoke JSON and SQLite database). Artifacts retained 30 days; download the evidence for report use. Failure logs are also archived where available. Verify the PR check on the current head before proceeding. Do not treat a skipped, cancelled, timed out, or missing simulation as a PASS.
+
+Task 01 smoke tests only verify boot, simulated wind alarm/clear, one rain pulse, one 300-second periodic record and replay into SQLite. They do NOT complete Tasks 02–17. See architecture.md for report requirements and hardware simulation limitations.

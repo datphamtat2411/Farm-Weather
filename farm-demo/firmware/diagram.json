@@ -71,7 +71,8 @@
       "left": 200,
       "attrs": {
         "color": "blue",
-        "label": "Rain tip"
+        "label": "Rain tip",
+        "bounce": "0"
       }
     },
     {

@@ -4,3 +4,7 @@
 *.sqlite-shm
 __pycache__/
 serial.log
+evidence/
+.env
+.env.*
+!.env.example
