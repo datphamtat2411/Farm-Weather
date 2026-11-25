@@ -22,6 +22,9 @@ class SmokeVerifierTest(unittest.TestCase):
     def test_reject_missing_event_or_wrong_data(self):
         cases = (self.fixture().replace("WIND_ALARM_OFF\n", ""),
                  self.fixture().replace("0.2794", "0.0"),
+                 self.fixture().replace("RAIN_TIPS=1", "RAIN_TIPS=10"),
+                 self.fixture().replace("WIND_ALARM_ON", "WIND_ALARM_ON\nWIND_ALARM_ON"),
+                 self.fixture().replace('"sequence_number": 1', '"sequence_number": true'),
                  self.fixture().replace("1795453500", "1795453501"),
                  self.fixture().split("TELEMETRY")[0])
         for data in cases:

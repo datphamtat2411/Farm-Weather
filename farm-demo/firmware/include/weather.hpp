@@ -1,9 +1,10 @@
 #pragma once
 #include <stdint.h>
+#include "design_config.hpp"
 
 namespace farm {
 constexpr unsigned WIND = 1, RAIN = 2, HEAT = 4, BATTERY = 8;
-inline double rainfall(unsigned tips) { return tips * 0.2794; }
+inline double rainfall(unsigned tips) { return tips * design::rain_mm_per_tip; }
 inline double windSpeed(unsigned pulses, unsigned seconds) {
     return seconds ? (2.0 * pulses / (3.0 * seconds)) : 0;
 }
@@ -20,38 +21,38 @@ inline unsigned median5(unsigned* a) {
 }
 struct Station {
     uint32_t seconds=0;
-    unsigned status=0, wind[3]={}, rain[600]={};
+    unsigned status=0, wind[design::wind_window_s]={}, rain[design::rain_window_s]={};
     unsigned rainWindow=0, rainPeriod=0, windPeriod=0, gust=0, periodElapsed=0;
     unsigned quiet=0, hot=0, cool=0, low=0, charged=0;
-    unsigned period=300;
+    unsigned period=design::normal_period_s;
     bool tick(unsigned windPulses,unsigned rainTips) {
-        unsigned i=seconds%600;
+        unsigned i=seconds%design::rain_window_s;
         rainWindow-=rain[i];rain[i]=rainTips;rainWindow+=rainTips;
-        wind[seconds%3]=windPulses;
+        wind[seconds%design::wind_window_s]=windPulses;
         ++seconds;++periodElapsed;
         rainPeriod+=rainTips;windPeriod+=windPulses;
         unsigned sum=wind[0]+wind[1]+wind[2];
-        if(seconds>=3) {
+        if(seconds>=design::wind_window_s) {
             if(sum>gust)gust=sum;
-            if(sum>=45){status|=WIND;quiet=0;}
+            if(sum>=design::wind_alarm_pulses){status|=WIND;quiet=0;}
             else if(status&WIND){
-                if(sum*2<63){if(++quiet>=60){status&=~WIND;quiet=0;}}
+                if(sum*2<design::wind_recovery_twice_pulses){if(++quiet>=design::wind_recovery_s){status&=~WIND;quiet=0;}}
                 else quiet=0;
             }
         }
-        if(rainfall(rainWindow)>=5.0)status|=RAIN;
-        else if(rainfall(rainWindow)<2.0)status&=~RAIN;
+        if(rainfall(rainWindow)>=design::rain_on_mm)status|=RAIN;
+        else if(rainfall(rainWindow)<design::rain_off_mm)status&=~RAIN;
         return periodElapsed>=period;
     }
     void temperature(double c) {
-        hot=c>=35?hot+1:0;cool=c<33?cool+1:0;
-        if(hot>=3)status|=HEAT;
-        if(cool>=3)status&=~HEAT;
+        hot=c>=design::heat_on_c?hot+1:0;cool=c<design::heat_off_c?cool+1:0;
+        if(hot>=design::confirmation_count)status|=HEAT;
+        if(cool>=design::confirmation_count)status&=~HEAT;
     }
     void battery(unsigned mv) {
-        low=mv<=3000?low+1:0;charged=mv>=3200?charged+1:0;
-        if(low>=3){status|=BATTERY;period=900;}
-        if(charged>=3){status&=~BATTERY;period=300;}
+        low=mv<=design::battery_low_mv?low+1:0;charged=mv>=design::battery_recovery_mv?charged+1:0;
+        if(low>=design::confirmation_count){status|=BATTERY;period=design::low_power_period_s;}
+        if(charged>=design::confirmation_count){status&=~BATTERY;period=design::normal_period_s;}
     }
     void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;}
 };

@@ -8,64 +8,112 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: farm-demo-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: farm-demo-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
-  foundation:
+  native:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Prepare evidence directory
+      - name: Native logic and negative-control tests
         run: |
           mkdir -p farm-demo/evidence
           git rev-parse HEAD > farm-demo/evidence/commit.txt
           python --version > farm-demo/evidence/toolchain.txt
           g++ --version >> farm-demo/evidence/toolchain.txt
-      - name: Native logic tests
-        run: |
-          g++ -std=c++17 -Wall -Wextra -Werror -I farm-demo/firmware/include farm-demo/tests/weather_test.cpp -o /tmp/weather-test
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/weather_test.cpp -o /tmp/weather-test
           /tmp/weather-test | tee farm-demo/evidence/native.log
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
-      - name: Build STM32 firmware
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: native-evidence
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [bluepill_f103c8, nucleo_l476rg]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Build target and record provenance
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          python --version > farm-demo/evidence/toolchain.txt
           python -m pip install platformio==6.1.18
           pio --version >> farm-demo/evidence/toolchain.txt
-          pio run -d farm-demo/firmware 2>&1 | tee farm-demo/evidence/build.log
-          pio pkg list -d farm-demo/firmware >> farm-demo/evidence/toolchain.txt
-          test -s farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.bin
-          test -s farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.elf
-          sha256sum farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.{bin,elf} > farm-demo/evidence/firmware-sha256.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          pio run -d farm-demo/firmware -e "$TARGET" 2>&1 | tee farm-demo/evidence/build.log
+          pio pkg list -d farm-demo/firmware -e "$TARGET" >> farm-demo/evidence/toolchain.txt
+          cd "farm-demo/firmware/.pio/build/$TARGET"
+          test -s firmware.bin
+          test -s firmware.elf
+          sha256sum firmware.bin firmware.elf > "$GITHUB_WORKSPACE/farm-demo/evidence/firmware-sha256.txt"
+          if [ "$TARGET" = bluepill_f103c8 ]; then
+            cp firmware.bin firmware.elf "$GITHUB_WORKSPACE/farm-demo/evidence/"
+          fi
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
         with:
-          name: firmware
-          path: |
-            farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.bin
-            farm-demo/firmware/.pio/build/bluepill_f103c8/firmware.elf
-          if-no-files-found: error
+          name: firmware-${{ matrix.target }}
+          path: farm-demo/evidence/
           retention-days: 30
+          if-no-files-found: warn
+  simulation:
+    needs: [native, firmware]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: firmware-bluepill_f103c8
+          path: ${{ runner.temp }}/firmware-wokwi
+      - name: Verify and stage exact firmware
+        run: |
+          mkdir -p farm-demo/evidence farm-demo/firmware/.pio/build/bluepill_f103c8
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          cmp farm-demo/evidence/commit.txt "$RUNNER_TEMP/firmware-wokwi/commit.txt"
+          (cd "$RUNNER_TEMP/firmware-wokwi" && sha256sum --check firmware-sha256.txt)
+          cp "$RUNNER_TEMP/firmware-wokwi"/firmware.{bin,elf} farm-demo/firmware/.pio/build/bluepill_f103c8/
+          cp "$RUNNER_TEMP/firmware-wokwi/firmware-sha256.txt" farm-demo/evidence/
       - name: Install pinned Wokwi CLI
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           curl --fail --silent --show-error --location --retry 3 -o "$RUNNER_TEMP/wokwi-cli" https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64
           echo "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258  $RUNNER_TEMP/wokwi-cli" | sha256sum --check
           chmod +x "$RUNNER_TEMP/wokwi-cli"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/wokwi-cli" --version >> farm-demo/evidence/toolchain.txt
+          "$RUNNER_TEMP/wokwi-cli" --version > farm-demo/evidence/toolchain.txt
       - name: Lint Wokwi diagram
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         working-directory: farm-demo/firmware
         run: wokwi-cli lint 2>&1 | tee ../evidence/diagram-lint.log
       - name: Run Wokwi scenario
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         working-directory: farm-demo/firmware
         env:
           WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
@@ -76,18 +124,28 @@ jobs:
           fi
           wokwi-cli . --scenario scenarios/weather.yaml --timeout 60000 --serial-log-file ../evidence/serial.log 2>&1 | tee ../evidence/wokwi.log
       - name: Verify telemetry and persistent SQLite idempotency
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json
-      - name: Report fork limitation
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        run: |
-          echo 'External fork: build/native tests only; Wokwi simulation NOT VERIFIED (no secret access).' >> "$GITHUB_STEP_SUMMARY"
-      - name: Archive evidence
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: farm-demo-evidence
+          name: simulation-evidence
           path: farm-demo/evidence/
-          if-no-files-found: warn
           retention-days: 30
+          if-no-files-found: warn
+  acceptance:
+    name: Task 01 acceptance
+    needs: [native, firmware, simulation]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every mandatory job
+        env:
+          NATIVE: ${{ needs.native.result }}
+          FIRMWARE: ${{ needs.firmware.result }}
+          SIMULATION: ${{ needs.simulation.result }}
+        run: |
+          printf 'Native: %s\nFirmware targets: %s\nSimulation: %s\n' "$NATIVE" "$FIRMWARE" "$SIMULATION" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$NATIVE" = success && test "$FIRMWARE" = success && test "$SIMULATION" = success
+          echo 'All mandatory Task 01 demo checks passed. Review the separate license provenance check too.' >> "$GITHUB_STEP_SUMMARY"

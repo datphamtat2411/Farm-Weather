@@ -28,5 +28,24 @@ int main(){
     assert(s.period==900 && (s.status&BATTERY));
     for(int i=0;i<3;i++)s.battery(3200);
     assert(s.period==300 && !(s.status&BATTERY));
+    assert(acceptPulse(4, UINT32_MAX-2, true, 5));
+    assert(!acceptPulse(1, UINT32_MAX-2, true, 5));
+    Station timing;
+    for(int i=0;i<299;++i) assert(!timing.tick(0,0));
+    assert(timing.tick(0,0));
+    timing.finishPeriod();
+    assert(timing.periodElapsed==0 && timing.seconds==300);
+    Station boundary;
+    for(int i=0;i<3;++i) boundary.tick(14,0);
+    assert(!(boundary.status&WIND));
+    boundary.tick(17,0);
+    assert(boundary.status&WIND);
+    for(int i=0;i<3;++i) boundary.tick(11,0);
+    assert(boundary.status&WIND);
+    for(int i=0;i<59;++i) boundary.tick(0,0);
+    assert(boundary.status&WIND);
+    boundary.tick(0,0);
+    boundary.tick(0,0);
+    assert(!(boundary.status&WIND));
     std::cout<<"Native weather logic PASS\n";
 }

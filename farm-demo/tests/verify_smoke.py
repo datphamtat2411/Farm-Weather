@@ -14,21 +14,26 @@ def require(condition, message):
 def verify(log_path, db_path):
     log = Path(log_path).read_text(encoding="utf-8")
     markers = ("READY FARM_WS_01 SIMULATION", "WIND_ALARM_ON", "RAIN_TIPS=1", "WIND_ALARM_OFF", "TELEMETRY {")
+    lines = [line.strip() for line in log.splitlines()]
     position = -1
     for marker in markers:
-        position = log.find(marker, position + 1)
-        require(position >= 0, f"missing or out-of-order serial marker: {marker}")
+        matches = [i for i, line in enumerate(lines) if (line.startswith(marker) if marker == "TELEMETRY {" else line == marker)]
+        require(len(matches) == 1 and matches[0] > position, f"missing, duplicate or out-of-order serial marker: {marker}")
+        position = matches[0]
     records = [json.loads(line.split("TELEMETRY ", 1)[1])
                for line in log.splitlines() if "TELEMETRY {" in line]
     require(len(records) == 1, f"expected one complete periodic record, got {len(records)}")
     r = records[0]
+    require(type(r["sequence_number"]) is int and type(r["period_s"]) is int
+            and type(r["ts_s"]) is int and type(r["valid_mask"]) is int and type(r["status"]) is int,
+            "integer telemetry metadata required")
     require(r["device_id"] == "FARM_WS_01", "unexpected station")
     require(r["sequence_number"] == 1 and r["period_s"] == 300, "wrong first record sequence or period")
     require(r["ts_s"] == 1795453500, "wrong simulated measurement timestamp")
     require(r["valid_mask"] == 127, "unexpected validity mask")
-    require(r["status"] & 1 == 0, "wind alarm did not recover")
+    require(r["status"] == 0, "unexpected alarm status after recovery")
     require(math.isclose(r["rainfall"], 0.2794, abs_tol=1e-5), "rainfall does not match one accepted tip")
-    require(r["wind_gust"] >= 10, "wind gust was not recorded")
+    require(r["wind_gust"] >= 10 and r["wind_gust"] >= r["wind_speed"], "wind gust was not recorded correctly")
     for key, low, high in (("temperature", 10, 50), ("humidity", 0, 100),
                            ("pressure", 900, 1100), ("battery_voltage", 2.7, 3.6),
                            ("wind_speed", 0, 20), ("wind_gust", 0, 20),

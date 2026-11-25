@@ -12,3 +12,6 @@ MVP cho báo cáo trạm thời tiết mini. Mã nguồn tách khỏi ThingsBoar
 ## Source provenance
 
 The farm-demo directory contains standalone project-specific firmware, tests and Edge code, not upstream ThingsBoard source. Do not stamp these files with a ThingsBoard copyright claim. The root ThingsBoard license and its restrictions remain unchanged; do not copy upstream code into this directory to evade the provenance check. Any additional licensing decision for standalone code belongs to the repository owner.
+
+## Engineering rule
+Select the best solution for the project. Avoid bare-minimum solutions or lazy shortcuts that only aim to get the task done with the least effort. Prefer verified, maintainable changes that preserve the report's architecture. Never disable a failing check merely to turn CI green; diagnose the failure and resolve its cause. Review scope and provenance explicitly. A task is done only after the full acceptance gate for its current commit passes.

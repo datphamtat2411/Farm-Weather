@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include "weather.hpp"
 
+#if !defined(FARM_WOKWI_SIMULATION) || !defined(STM32F103xB)
+#error This adapter is for Wokwi Blue Pill only; never flash it as the physical station.
+#endif
+
 Uart& WeatherSerial = Serial1;
 farm::Station station;
 volatile unsigned tips=0;
@@ -10,12 +14,13 @@ unsigned sequence=0, prevStatus=0, totalTips=0;
 uint32_t nextTick;
 double temperature=0, humidity=0, pressure=0;
 unsigned batteryMv=3200;
+// Accelerated simulation adapter only, not the physical RTC or power scheduler.
 constexpr uint32_t TICK_MS=100;
 constexpr uint32_t EPOCH=1795453200UL;
 
 void rainISR(){
     uint32_t now=millis();
-    if(farm::acceptPulse(now,lastTip,seenTip,50)){
+    if(farm::acceptPulse(now,lastTip,seenTip,farm::design::rain_debounce_ms)){
         ++tips;lastTip=now;seenTip=true;
     }
 }
@@ -69,8 +74,8 @@ void loop(){
     if(n){totalTips+=n;WeatherSerial.print("RAIN_TIPS=");WeatherSerial.println(totalTips);}
     unsigned pulses=(unsigned)(fraction(PA5)*30.0+0.5);
     bool due=station.tick(pulses,n);
-    if(station.seconds%60==0)readAmbient();
-    if(station.seconds%300==0){
+    if(station.seconds%farm::design::ambient_period_s==0)readAmbient();
+    if(station.seconds%farm::design::normal_period_s==0){
         batteryMv=2700+(unsigned)(fraction(PA1)*900);
         station.battery(batteryMv);
     }
