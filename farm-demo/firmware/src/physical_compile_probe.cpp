@@ -3,6 +3,7 @@
 #include "weather.hpp"
 #include "power.hpp"
 #include "wire.hpp"
+#include "class_a.hpp"
 
 #if !defined(FARM_PHYSICAL_COMPILE_PROBE) || !defined(STM32L476xx)
 #error This non-deployable compile probe must target STM32L476RG.

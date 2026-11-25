@@ -4,6 +4,8 @@
 #include "ambient_sensor.hpp"
 #include "sim_pins.hpp"
 #include "wire.hpp"
+#include "sim_flash.hpp"
+#include "class_a.hpp"
 using namespace farm::sim;
 
 #if !defined(FARM_WOKWI_SIMULATION) || !defined(STM32F103xB)
@@ -25,7 +27,11 @@ volatile uint32_t lastTip=0,lastWind=0;
 volatile bool seenTip=false,seenWind=false;
 farm::SimI2c sensorBus(sda,scl);
 farm::AmbientSensor ambient(sensorBus);
-unsigned sequence=0,prevStatus=0,prevFaultMask=0,totalTips=0;
+farm::sim::Flash flash(sensorBus);
+farm::storage::Ring<farm::sim::Flash> ring(flash);
+farm::link::ClassA<decltype(ring)> radio(ring);
+uint32_t sequence=0;
+unsigned prevStatus=0,prevFaultMask=0,totalTips=0;
 uint32_t nextTick;
 unsigned batteryMv=3200;
 bool batteryValid=true, directionValid=false;
@@ -101,7 +107,103 @@ void appendWire(const farm::wire::Payload& payload,uint8_t port){
     WeatherSerial.print(",\"fport\":");WeatherSerial.print(port);
     WeatherSerial.print(",\"wire_hex\":\"");WeatherSerial.print(hex);WeatherSerial.print("\"");
 }
+// Simulation gateway double: accepts delivered uplinks and schedules an explicit
+// FPort 20 ACK in RX1. It is not the SQLite commit service (Task 08).
+bool linkUp=true,autoAck=true,dropAck=false;
+uint32_t mockCommitted=0;
+char commandLine[160]={};unsigned commandSize=0;bool commandOverflow=false;
+void printHex(const farm::wire::Payload& payload){
+    const char digits[]="0123456789abcdef";
+    for(size_t i=0;i<payload.size;++i){WeatherSerial.print(digits[payload.data[i]>>4]);WeatherSerial.print(digits[payload.data[i]&15]);}
+}
+void queueRecord(uint8_t port,const farm::wire::Payload& payload){
+    const bool warned=ring.nearFull();
+    const auto result=ring.append({sequence,port,payload});
+    WeatherSerial.print(result==farm::storage::StoreResult::Stored?"BUFFER_STORED ":"BUFFER_GAP ");
+    WeatherSerial.print(sequence);WeatherSerial.print(" pending=");WeatherSerial.println(ring.count);
+    if(!warned&&ring.nearFull())WeatherSerial.println("BUFFER_WARNING_ON");
+    if(result==farm::storage::StoreResult::IoError)WeatherSerial.println("HARDWARE_ERROR FLASH_IO");
+}
+bool reserveRecord(){
+    sequence=ring.reserve();
+    if(sequence)return true;
+    WeatherSerial.println("HARDWARE_ERROR FLASH_SEQUENCE");
+    return false;
+}
+void applyAck(uint8_t port,const farm::wire::Payload& p){
+    const bool warned=ring.nearFull();
+    const unsigned accepted=radio.downlink(station.seconds,port,p);
+    WeatherSerial.print("DOWNLINK fport=");WeatherSerial.print(port);
+    WeatherSerial.print(" rx="); // Window may close after accepting current ACK.
+    WeatherSerial.print(accepted?"accepted":"rejected");
+    WeatherSerial.print(" count=");WeatherSerial.print(accepted);
+    WeatherSerial.print(" pending=");WeatherSerial.println(ring.count);
+    if(warned&&!ring.nearFull())WeatherSerial.println("BUFFER_WARNING_OFF");
+    if(!ring.ready())WeatherSerial.println("HARDWARE_ERROR FLASH_ACK");
+}
+int nibble(char c){
+    if(c>='0'&&c<='9')return c-'0';
+    if(c>='a'&&c<='f')return c-'a'+10;
+    return -1;
+}
+void handleCommand(){
+    if(!strcmp(commandLine,"LINK DOWN")){linkUp=false;mockCommitted=0;WeatherSerial.println("LINK_DOWN");}
+    else if(!strcmp(commandLine,"LINK UP")){linkUp=true;WeatherSerial.println("LINK_UP");}
+    else if(!strcmp(commandLine,"ACK DROP")){dropAck=true;WeatherSerial.println("ACK_DROP");}
+    else if(!strcmp(commandLine,"ACK AUTO")){autoAck=true;dropAck=false;WeatherSerial.println("ACK_AUTO");}
+    else if(!strcmp(commandLine,"ACK MANUAL")){autoAck=false;mockCommitted=0;WeatherSerial.println("ACK_MANUAL");}
+    else if(!strncmp(commandLine,"LIMIT ",6)){
+        char* end=nullptr;const unsigned long limit=strtoul(commandLine+6,&end,10);
+        if(end&&!*end&&limit>0&&limit<=farm::wire::capacity){radio.payloadLimit=unsigned(limit);WeatherSerial.println("LIMIT_SET");}
+        else WeatherSerial.println("COMMAND_REJECTED");
+    }else if(!strncmp(commandLine,"DOWNLINK ",9)){
+        char* end=nullptr;const unsigned long port=strtoul(commandLine+9,&end,10);
+        farm::wire::Payload p;
+        if(!end||*end!=' '||port>255){WeatherSerial.println("COMMAND_REJECTED");return;}
+        const char* hex=end+1;
+        while(*hex){
+            const int a=nibble(*hex++);if(!*hex){p.ok=false;break;}
+            const int b=nibble(*hex++);
+            if(a<0||b<0||!p.byte(uint8_t(a*16+b))){p.ok=false;break;}
+        }
+        if(linkUp)applyAck(uint8_t(port),p);
+    }else WeatherSerial.println("COMMAND_REJECTED");
+}
+void readCommands(){
+    // Bound work per loop, no blocking serial read or dynamic String.
+    for(unsigned n=0;n<32&&WeatherSerial.available();++n){
+        const char c=char(WeatherSerial.read());
+        if(c=='\r')continue;
+        if(c=='\n'){
+            if(!commandOverflow){commandLine[commandSize]='\0';handleCommand();}
+            else WeatherSerial.println("COMMAND_REJECTED");
+            commandSize=0;commandOverflow=false;
+        }else if(commandSize+1<sizeof(commandLine))commandLine[commandSize++]=c;
+        else commandOverflow=true;
+    }
+}
+void serviceRadio(){
+    const unsigned rx=radio.window(station.seconds);
+    if(rx){
+        WeatherSerial.print("RX");WeatherSerial.println(rx);
+        if(rx==1&&linkUp&&autoAck&&mockCommitted&&!dropAck){
+            farm::wire::Payload ack;ack.field(1,mockCommitted);
+            WeatherSerial.print("SIM_GATEWAY_ACK ");WeatherSerial.println(mockCommitted);
+            applyAck(farm::wire::ACK_PORT,ack);mockCommitted=0;
+        }
+    }
+    radio.tick(station.seconds,[](const farm::storage::Frame& f,uint32_t counter){
+        WeatherSerial.print("RADIO_TX seq=");WeatherSerial.print(f.sequence);
+        WeatherSerial.print(" fcnt=");WeatherSerial.print(counter);
+        WeatherSerial.print(" fport=");WeatherSerial.print(f.port);
+        WeatherSerial.print(" hex=");printHex(f.payload);
+        WeatherSerial.print(" delivered=");WeatherSerial.println(linkUp?1:0);
+        mockCommitted=linkUp?f.sequence:0;
+    });
+}
+
 void emitTelemetry(){
+    if(!reserveRecord()){directionPeriod.reset();station.finishPeriod();return;}
     unsigned angle=0;
     const bool directionUsable=directionValid && station.windPeriodValid && station.windPeriod>0 && directionPeriod.mean(angle);
     unsigned valid=farm::quality::RAIN;
@@ -112,7 +214,7 @@ void emitTelemetry(){
 
     auto& s=WeatherSerial;
     s.print("TELEMETRY {\"device_id\":\"FARM_WS_01\",\"sequence_number\":");
-    s.print(++sequence);
+    s.print(sequence);
     s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
     s.print(",\"period_s\":");s.print(station.periodElapsed);
     if(valid&farm::quality::TEMPERATURE){
@@ -146,7 +248,8 @@ void emitTelemetry(){
         record.gust=unsigned(farm::wire::x10(farm::windSpeed(station.gust,farm::design::wind_window_s)));
     }
     record.direction=angle;record.rain=station.rainPeriod;record.battery=batteryMv;
-    appendWire(farm::wire::encode(record),farm::wire::PERIODIC_PORT);
+    const auto payload=farm::wire::encode(record);
+    appendWire(payload,farm::wire::PERIODIC_PORT);
     // Diagnostics are not part of the compact wire schema.
     s.print(",\"next_period_s\":");s.print(station.period);
     s.print(",\"ambient_samples\":");s.print(ambientSamples);
@@ -162,6 +265,7 @@ void emitTelemetry(){
     s.print(",\"wind_edges\":");s.print(stats.wind_edges);
     s.print(",\"rain_edges\":");s.print(stats.rain_edges);
     s.println("}");
+    queueRecord(farm::wire::PERIODIC_PORT,payload);
     directionPeriod.reset();
     station.finishPeriod();
 }
@@ -181,10 +285,11 @@ const char* modeName(){
     }
 }
 void emitEvent(unsigned changed,unsigned changedFaults){
+    if(!reserveRecord())return;
     // One snapshot per logical second, including simultaneous transitions.
     // Shared sequence namespace with periodic records; no periodic rain increment.
     auto& s=WeatherSerial;
-    s.print("EVENT {\"device_id\":\"FARM_WS_01\",\"kind\":\"event\",\"sequence_number\":");s.print(++sequence);
+    s.print("EVENT {\"device_id\":\"FARM_WS_01\",\"kind\":\"event\",\"sequence_number\":");s.print(sequence);
     s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
     s.print(",\"changed_mask\":");s.print(changed);
     s.print(",\"status\":");s.print(station.status);
@@ -212,8 +317,10 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     event.rain=station.rainWindow;
     if(event.has_temp)event.temperature=farm::wire::x10(latestTemperature);
     event.battery=batteryMv;
-    appendWire(farm::wire::encode(event),farm::wire::EVENT_PORT);
+    const auto payload=farm::wire::encode(event);
+    appendWire(payload,farm::wire::EVENT_PORT);
     s.println("}");
+    queueRecord(farm::wire::EVENT_PORT,payload);
 }
 void setup(){
     WeatherSerial.setRx(uart_rx);WeatherSerial.setTx(uart_tx);
@@ -223,6 +330,10 @@ void setup(){
     pinMode(wind_fault,INPUT_PULLDOWN);pinMode(confirm_button,INPUT_PULLUP);
     pinMode(buzzer,OUTPUT);pinMode(relay,OUTPUT);
     digitalWrite(buzzer,LOW);digitalWrite(relay,LOW);
+    sensorBus.begin();
+    if(!ring.begin())WeatherSerial.println("HARDWARE_ERROR FLASH_RECOVERY");
+    WeatherSerial.print("FLASH_READY highwater=");WeatherSerial.print(ring.highwater);
+    WeatherSerial.print(" pending=");WeatherSerial.print(ring.count);WeatherSerial.print(" corrupt=");WeatherSerial.println(ring.corrupt);
     power.begin(micros());
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
@@ -235,6 +346,7 @@ void setup(){
     WeatherSerial.println("READY FARM_WS_01 SIMULATION");
 }
 void loop(){
+    readCommands();
     if((int32_t)(millis()-nextTick)<0){
         // Logical Stop 2: no peripheral tasks due, no transactions in flight.
         // Do NOT execute physical Stop 2 on Wokwi F103; SysTick/EXTI stay live.
@@ -266,4 +378,5 @@ void loop(){
         WeatherSerial.println(station.status&farm::WIND?"WIND_ALARM_ON":"WIND_ALARM_OFF");
     prevStatus=station.status;
     if(due)emitTelemetry();
+    serviceRadio();
 }

@@ -49,7 +49,7 @@ jobs:
           python --version > farm-demo/evidence/toolchain.txt
           g++ --version >> farm-demo/evidence/toolchain.txt
           # Every added native *_test.cpp participates automatically.
-          for required in weather acquisition alarm power protocol; do
+          for required in weather acquisition alarm power protocol ring; do
             test -f "farm-demo/tests/${required}_test.cpp"
           done
           for source in farm-demo/tests/*_test.cpp; do

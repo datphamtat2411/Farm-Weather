@@ -50,6 +50,17 @@ class SimI2c {
 public:
     SimI2c(uint32_t data,uint32_t clock):sda(data),scl(clock){}
     void begin(){release(sda);release(scl);}
+    bool memoryCommand(uint8_t command,unsigned address,const uint8_t* data,unsigned n){
+        bool ok=start()&&put(0x50<<1)&&put(command)&&put(uint8_t(address>>8))&&put(uint8_t(address));
+        for(unsigned i=0;ok&&i<n;++i)ok=put(data[i]);
+        stop();return ok;
+    }
+    bool memoryRead(unsigned address,uint8_t* data,unsigned n){
+        if(!memoryCommand(0,address,nullptr,0))return false;
+        bool ok=start()&&put((0x50<<1)|1);
+        for(unsigned i=0;ok&&i<n;++i)ok=get(data[i],i+1<n);
+        stop();return ok;
+    }
     bool write(uint8_t reg,uint8_t value){
         bool ok=start()&&put(0x76<<1)&&put(reg)&&put(value);stop();return ok;
     }

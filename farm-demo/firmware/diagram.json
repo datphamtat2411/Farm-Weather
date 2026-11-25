@@ -107,6 +107,13 @@
         "label": "Inspection acknowledged",
         "bounce": "0"
       }
+    },
+    {
+      "type": "chip-nor",
+      "id": "flash",
+      "top": 90,
+      "left": 310,
+      "attrs": {}
     }
   ],
   "connections": [
@@ -264,6 +271,30 @@
       "wind:FAULT",
       "mcu:B10",
       "orange",
+      []
+    ],
+    [
+      "flash:VCC",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "flash:GND",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "flash:SCL",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "flash:SDA",
+      "mcu:B7",
+      "green",
       []
     ]
   ]

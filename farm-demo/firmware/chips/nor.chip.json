@@ -1,0 +1,10 @@
+{
+  "name": "Station 64 KiB NOR model",
+  "author": "Farm Weather",
+  "pins": [
+    "VCC",
+    "GND",
+    "SCL",
+    "SDA"
+  ]
+}

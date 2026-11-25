@@ -10,3 +10,7 @@ binary = "chips/bme280.chip.wasm"
 [[chip]]
 name = "wind"
 binary = "chips/wind.chip.wasm"
+
+[[chip]]
+name = "nor"
+binary = "chips/nor.chip.wasm"

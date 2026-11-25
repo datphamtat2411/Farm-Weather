@@ -19,6 +19,7 @@ MANDATORY = {
     "invalid-ambient": {"verify_invalid_ambient.py"},
     "local-alarms": {"verify_alarms.py"},
     "power": {"verify_power.py"},
+    "link-recovery": {"verify_link.py"},
 }
 
 def require(condition, message):

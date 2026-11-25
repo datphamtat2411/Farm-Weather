@@ -1,0 +1,33 @@
+name: Task 07 D05 link outage, local alarm and replay
+version: 1
+steps:
+  - wait-serial: 'READY FARM_WS_01 SIMULATION'
+  - write-serial: "LINK DOWN\n"
+  - wait-serial: 'LINK_DOWN'
+  - set-control:
+      part-id: wind
+      name: frequency
+      value: 27
+  - wait-serial: 'WIND_ALARM_ON'
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
+  - delay: 32000ms
+  - write-serial: "ACK DROP\n"
+  - wait-serial: 'ACK_DROP'
+  - write-serial: "LINK UP\n"
+  - wait-serial: 'LINK_UP'
+  - wait-serial: 'delivered=1'
+  - delay: 3000ms
+  - write-serial: "ACK AUTO\n"
+  - wait-serial: 'ACK_AUTO'
+  - wait-serial: 'pending=0'
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1

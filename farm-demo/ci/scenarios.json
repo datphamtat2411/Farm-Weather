@@ -66,5 +66,20 @@
         "report": "power.json"
       }
     ]
+  },
+  {
+    "id": "link-recovery",
+    "timeout_ms": 120000,
+    "serial": "link-recovery.log",
+    "console": "link-recovery-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_link.py",
+        "args": [
+          "link-recovery.log"
+        ],
+        "report": "link-recovery.json"
+      }
+    ]
   }
 ]

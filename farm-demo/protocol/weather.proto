@@ -38,3 +38,8 @@ message WeatherEvent {
   optional sint32 temp_x10 = 13;
   optional uint32 battery_mv = 14;
 }
+
+// FPort 20: explicit application-level acknowledgements, never cumulative.
+message WeatherAck {
+  repeated uint32 sequence_number = 1 [packed = false];
+}
