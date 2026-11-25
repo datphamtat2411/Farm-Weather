@@ -1,12 +1,12 @@
 #pragma once
 #include <Arduino.h>
 #include <math.h>
+#include "acquisition.hpp"
 
 // Bounded open-drain software I2C adapter for the Wokwi F103 peripheral model.
 // Register transactions are real SCL/SDA transitions, never direct value injection.
 // The production STM32L476 uses its hardware I2C peripheral (Task 03).
 namespace farm {
-struct AmbientSample {float temperature,humidity,pressure;};
 class SimI2c {
     uint32_t sda,scl;
     static void release(uint32_t pin){pinMode(pin,INPUT_PULLUP);}
