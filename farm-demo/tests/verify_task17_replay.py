@@ -70,8 +70,10 @@ def run(args):
     station=topology["devices"][STATION]
     emails={name:f"farm-task17-{name}@example.invalid" for name in ROLES}
     manifest,users,_=install_security(admin,topology,emails)
-    password="Aa1!"+secrets.token_hex(24)
-    activate(admin,users["operator"],password)
+    passwords={name:"Aa1!"+secrets.token_hex(24) for name in ROLES}
+    for name in ROLES:
+        activate(admin,users[name],passwords[name])
+    password=passwords["operator"]
     reader_key=issue_key(admin,users["reader"],"CI replay history reader")["value"]
     control_key=issue_key(admin,users["control"],"CI replay control")["value"]
     adapter=MqttRestCloud("127.0.0.1",args.port,args.url,topology["devices"],token=token,
