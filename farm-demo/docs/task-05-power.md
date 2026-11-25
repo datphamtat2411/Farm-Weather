@@ -7,3 +7,7 @@ Pin được đọc mỗi 300 giây kể cả khi chu kỳ truyền là 900 giâ
 Ngân sách tính toán tách khỏi đo mô phỏng: 12 mA × 12 s, 140 × 2, 18 × 3, 0.30 × 283 = 562.9 mA·s/300 s. Còi 30 mA và LED cách ly 5 mA mỗi tải 15 phút/ngày, hiệu suất 85%, tải pin 1 mA, 3 ngày, DoD 80%, suy giảm 0.8, dự phòng 1.5. Kết quả tính không làm tròn giữa các bước là khoảng 0.418 Ah; báo cáo làm tròn Epin thành 0.286 Wh/ngày trước khi tính nên ghi 0.419 Ah. Cả hai dẫn đến lựa chọn khoảng 0.63 Ah sau dự phòng. Pin chọn 3.2 V/2 Ah, mặt trời 5 W; Gateway 8 W dùng pin 12.8 V/25 Ah riêng. Kỳ 900 s giữ ngân sách đọc/xử lý tỷ lệ thời gian (36 s), một TX/RX theo giả thiết báo cáo. Không tuyên bố radio hoạt động hay điện năng thực đo; LoRaWAN, flash, RX1/RX2 thực thuộc Task 06/07. Tất cả con số dòng là thiết kế.
 
 Kiểm thử: native boundary, chuỗi pin lỗi/hysteresis, thời gian wrap, phân bổ năng lượng; Wokwi chạy 2100 giây logic với 5 bản ghi 300/300/300/900/300, pin thấp rồi phục hồi, xung mưa/gió và còi/relay trong kỳ 900. Artifacts power-native.log, energy-budget.json, power.log, power.json. Các kiểm thử Task 01–04 vẫn bắt buộc.
+
+## Trạng thái nghiệm thu
+
+Commit 4a138a2: native, hai bản build, smoke, invalid ambient và local alarms PASS. Kịch bản power không được khởi chạy vì Wokwi API báo hết quota Free (cả push và PR). Task 05 chưa nghiệm thu phần Wokwi. Development CI mới không gọi Simulation API; kịch bản power được giữ bắt buộc trong hardware acceptance Task 17.

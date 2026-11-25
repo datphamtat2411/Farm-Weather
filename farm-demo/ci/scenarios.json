@@ -1,0 +1,70 @@
+[
+  {
+    "id": "weather",
+    "timeout_ms": 60000,
+    "serial": "serial.log",
+    "console": "wokwi.log",
+    "checks": [
+      {
+        "script": "verify_smoke.py",
+        "args": [
+          "serial.log",
+          "weather.sqlite"
+        ],
+        "report": "smoke.json"
+      },
+      {
+        "script": "verify_hardware.py",
+        "args": [
+          "smoke.json"
+        ],
+        "report": "hardware.json"
+      }
+    ]
+  },
+  {
+    "id": "invalid-ambient",
+    "timeout_ms": 60000,
+    "serial": "invalid-ambient.log",
+    "console": "invalid-ambient-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_invalid_ambient.py",
+        "args": [
+          "invalid-ambient.log"
+        ],
+        "report": "invalid-ambient.json"
+      }
+    ]
+  },
+  {
+    "id": "local-alarms",
+    "timeout_ms": 120000,
+    "serial": "local-alarms.log",
+    "console": "local-alarms-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_alarms.py",
+        "args": [
+          "local-alarms.log"
+        ],
+        "report": "local-alarms.json"
+      }
+    ]
+  },
+  {
+    "id": "power",
+    "timeout_ms": 300000,
+    "serial": "power.log",
+    "console": "power-wokwi.log",
+    "checks": [
+      {
+        "script": "verify_power.py",
+        "args": [
+          "power.log"
+        ],
+        "report": "power.json"
+      }
+    ]
+  }
+]

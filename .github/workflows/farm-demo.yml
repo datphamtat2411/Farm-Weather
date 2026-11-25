@@ -1,20 +1,25 @@
-name: Farm weather demo CI
+name: Farm weather development CI
 on:
   push:
-    paths: ['farm-demo/**', '.github/workflows/farm-demo.yml']
-  pull_request:
-    paths: ['farm-demo/**', '.github/workflows/farm-demo.yml']
+    branches: ['demo/farm-weather', 'demo/farm-weather/**']
   workflow_dispatch:
+  workflow_call:
+    outputs:
+      scenarios:
+        description: Validated mandatory hardware scenario matrix
+        value: ${{ jobs.native.outputs.scenarios }}
 permissions:
   contents: read
 concurrency:
-  group: farm-demo-${{ github.event_name }}-${{ github.ref }}
+  group: farm-demo-development-${{ github.ref }}
   cancel-in-progress: true
 defaults:
   run:
     shell: bash
 jobs:
   native:
+    outputs:
+      scenarios: ${{ steps.scenarios.outputs.matrix }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -24,20 +29,32 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+      - name: Lint both CI workflows (no Wokwi API)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 .github/workflows/farm-demo.yml .github/workflows/farm-demo-acceptance.yml
+      - name: Validate mandatory scenario inventory
+        id: scenarios
+        run: |
+          mkdir -p farm-demo/evidence
+          matrix="$(python farm-demo/ci/scenarios.py matrix)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$matrix" > farm-demo/evidence/scenario-matrix.json
       - name: Native logic and negative-control tests
         run: |
           mkdir -p farm-demo/evidence
           git rev-parse HEAD > farm-demo/evidence/commit.txt
           python --version > farm-demo/evidence/toolchain.txt
           g++ --version >> farm-demo/evidence/toolchain.txt
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/weather_test.cpp -o /tmp/weather-test
-          /tmp/weather-test | tee farm-demo/evidence/native.log
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/acquisition_test.cpp -o /tmp/acquisition-test
-          /tmp/acquisition-test | tee farm-demo/evidence/acquisition-native.log
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/alarm_test.cpp -o /tmp/alarm-test
-          /tmp/alarm-test | tee farm-demo/evidence/alarm-native.log
-          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/power_test.cpp -o /tmp/power-test
-          /tmp/power-test | tee farm-demo/evidence/power-native.log
+          # Every added native *_test.cpp participates automatically.
+          for required in weather acquisition alarm power; do
+            test -f "farm-demo/tests/${required}_test.cpp"
+          done
+          for source in farm-demo/tests/*_test.cpp; do
+            suite="$(basename "$source" _test.cpp)"
+            logfile="$suite-native.log"
+            if [[ "$suite" == weather ]]; then logfile=native.log; fi
+            g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include "$source" -o "$RUNNER_TEMP/farm-native-test"
+            "$RUNNER_TEMP/farm-native-test" | tee "farm-demo/evidence/$logfile"
+          done
           python farm-demo/tests/energy_budget.py > farm-demo/evidence/energy-budget.json
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -46,6 +63,7 @@ jobs:
           name: native-evidence
           path: farm-demo/evidence/
           retention-days: 30
+          overwrite: true
           if-no-files-found: warn
   firmware:
     runs-on: ubuntu-24.04
@@ -85,109 +103,63 @@ jobs:
           name: firmware-${{ matrix.target }}
           path: farm-demo/evidence/
           retention-days: 30
+          overwrite: true
           if-no-files-found: warn
-  simulation:
+  preflight:
+    name: Wokwi offline preflight (no simulation quota)
     needs: [native, firmware]
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
+    env:
+      WOKWI_CLI_TOKEN: ''
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: firmware-bluepill_f103c8
           path: ${{ runner.temp }}/firmware-wokwi
-      - name: Verify and stage exact firmware
-        run: |
-          mkdir -p farm-demo/evidence farm-demo/firmware/.pio/build/bluepill_f103c8
-          git rev-parse HEAD > farm-demo/evidence/commit.txt
-          cmp farm-demo/evidence/commit.txt "$RUNNER_TEMP/firmware-wokwi/commit.txt"
-          (cd "$RUNNER_TEMP/firmware-wokwi" && sha256sum --check firmware-sha256.txt)
-          cp "$RUNNER_TEMP/firmware-wokwi"/firmware.{bin,elf} farm-demo/firmware/.pio/build/bluepill_f103c8/
-          cp "$RUNNER_TEMP/firmware-wokwi/firmware-sha256.txt" farm-demo/evidence/
-      - name: Install pinned Wokwi CLI
-        run: |
-          curl --fail --silent --show-error --location --retry 3 -o "$RUNNER_TEMP/wokwi-cli" https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64
-          echo "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258  $RUNNER_TEMP/wokwi-cli" | sha256sum --check
-          chmod +x "$RUNNER_TEMP/wokwi-cli"
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/wokwi-cli" --version > farm-demo/evidence/toolchain.txt
-      - name: Compile custom sensor models
+      - name: Stage exact firmware
+        run: bash farm-demo/ci/stage-firmware.sh "$RUNNER_TEMP/firmware-wokwi"
+      - name: Install pinned Wokwi CLI (no token)
+        run: bash farm-demo/ci/install-wokwi.sh
+      - name: Compile custom chips and lint diagram without Simulation API
         working-directory: farm-demo/firmware
         run: |
-          wokwi-cli chip compile chips/bme280.chip.c -o chips/bme280.chip.wasm
-          wokwi-cli chip compile chips/wind.chip.c -o chips/wind.chip.wasm
-          sha256sum chips/*.wasm > ../evidence/chips-sha256.txt
-      - name: Lint Wokwi diagram
-        working-directory: farm-demo/firmware
-        run: wokwi-cli lint 2>&1 | tee ../evidence/diagram-lint.log
-      - name: Run Wokwi scenario
-        working-directory: farm-demo/firmware
-        env:
-          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
-        run: |
-          if [ -z "$WOKWI_CLI_TOKEN" ]; then
-            echo "::error::Missing WOKWI_CLI_TOKEN (repository Actions secret)."
-            exit 1
-          fi
-          wokwi-cli . --scenario scenarios/weather.yaml --fail-text HARDWARE_ERROR --timeout 60000 --serial-log-file ../evidence/serial.log 2>&1 | tee ../evidence/wokwi.log
-      - name: Verify telemetry and persistent SQLite idempotency
-        run: |
-          python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json
-      - name: Verify hardware sensor values and actuator smoke
-        run: python farm-demo/tests/verify_hardware.py farm-demo/evidence/smoke.json | tee farm-demo/evidence/hardware.json
-      - name: Wokwi negative-control invalid ambient
-        working-directory: farm-demo/firmware
-        env:
-          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
-        run: |
-          wokwi-cli . --scenario scenarios/invalid-ambient.yaml --fail-text HARDWARE_ERROR --timeout 60000 --serial-log-file ../evidence/invalid-ambient.log 2>&1 | tee ../evidence/invalid-ambient-wokwi.log
-      - name: Assert real Wokwi invalid sensor is flagged and omitted
-        run: python farm-demo/tests/verify_invalid_ambient.py farm-demo/evidence/invalid-ambient.log | tee farm-demo/evidence/invalid-ambient.json
-      - name: Wokwi local alarm and fault recovery
-        working-directory: farm-demo/firmware
-        env:
-          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
-        run: |
-          wokwi-cli . --scenario scenarios/local-alarms.yaml --fail-text HARDWARE_ERROR --timeout 120000 --serial-log-file ../evidence/local-alarms.log 2>&1 | tee ../evidence/local-alarms-wokwi.log
-      - name: Verify local alarm transitions
-        run: python farm-demo/tests/verify_alarms.py farm-demo/evidence/local-alarms.log | tee farm-demo/evidence/local-alarms.json
-      - name: Wokwi low battery and recovery
-        working-directory: farm-demo/firmware
-        env:
-          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
-        run: |
-          wokwi-cli . --scenario scenarios/power.yaml --fail-text HARDWARE_ERROR --timeout 300000 --serial-log-file ../evidence/power.log 2>&1 | tee ../evidence/power-wokwi.log
-      - name: Verify power schedule and retained measurements
-        run: python farm-demo/tests/verify_power.py farm-demo/evidence/power.log | tee farm-demo/evidence/power.json
+          mkdir -p ../evidence/chips
+          for source in chips/*.chip.c; do
+            wokwi-cli chip compile "$source" -o "${source%.c}.wasm"
+          done
+          wokwi-cli lint 2>&1 | tee ../evidence/diagram-lint.log
+          cp chips/*.chip.wasm ../evidence/chips/
+          (cd ../evidence && sha256sum chips/*.chip.wasm > chips-sha256.txt)
+          git rev-parse HEAD > ../evidence/commit.txt
+          wokwi-cli --version > ../evidence/wokwi-toolchain.txt
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
         with:
-          name: simulation-evidence
+          name: wokwi-preflight
           path: farm-demo/evidence/
           retention-days: 30
-          if-no-files-found: warn
-  acceptance:
-    name: Farm demo acceptance
-    needs: [native, firmware, simulation]
+          overwrite: true
+          if-no-files-found: error
+  development_gate:
+    name: Farm development acceptance (no hardware claim)
+    needs: [native, firmware, preflight]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require every mandatory job
+      - name: Require all development checks
         env:
           NATIVE: ${{ needs.native.result }}
           FIRMWARE: ${{ needs.firmware.result }}
-          SIMULATION: ${{ needs.simulation.result }}
+          PREFLIGHT: ${{ needs.preflight.result }}
         run: |
-          printf 'Native: %s\nFirmware targets: %s\nSimulation: %s\n' "$NATIVE" "$FIRMWARE" "$SIMULATION" | tee -a "$GITHUB_STEP_SUMMARY"
-          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$SIMULATION" != success ]]; then
-            echo "::error::Mandatory farm demo job failed, was cancelled, or was skipped."
+          printf 'Commit: %s\nNative: %s\nFirmware: %s\nOffline preflight: %s\n' "$GITHUB_SHA" "$NATIVE" "$FIRMWARE" "$PREFLIGHT" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo 'Hardware simulation: DEFERRED in this development gate. Separate hardware acceptance is mandatory for Task 17.' >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$PREFLIGHT" != success ]]; then
+            echo "::error::Mandatory development job failed, was cancelled, or was skipped."
             exit 1
           fi
-          echo 'All mandatory farm demo checks passed. Review the separate license provenance check too.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Development checks passed; this is not full product acceptance.' >> "$GITHUB_STEP_SUMMARY"
