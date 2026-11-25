@@ -1,3 +1,4 @@
+import json
 import unittest
 from verify_protocol import decode, WeatherRecord, WeatherEvent, serial
 
@@ -40,3 +41,14 @@ class ProtocolTest(unittest.TestCase):
     def test_serial_missing_wire_fails(self):
         with self.assertRaises(ValueError):
             serial('TELEMETRY {"device_id":"FARM_WS_01","sequence_number":1}')
+
+    def test_serial_reference_and_mismatch(self):
+        msg=self.record()
+        row=dict(device_id="FARM_WS_01",sequence_number=1,ts_s=1795453200,
+                 period_s=300,status=0,valid_mask=32,rainfall=0,
+                 fport=10,wire_hex=msg.SerializeToString().hex())
+        self.assertEqual(serial("TELEMETRY "+json.dumps(row))["records"][0]["record"]["rainfall"],0)
+        for patch in (dict(rainfall=0.2794),dict(temperature=0),dict(fport=11),
+                      dict(ts_s=1795453201),dict(wire_hex="ff"),dict(sequence_number=2)):
+            with self.assertRaises(ValueError):
+                serial("TELEMETRY "+json.dumps(dict(row,**patch)))

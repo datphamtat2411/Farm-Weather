@@ -17,7 +17,7 @@ def native(log):
         name, port, data=line.split()
         check(name not in frames,"duplicate vector")
         frames[name]=(int(port),bytes.fromhex(data))
-    check(set(frames)=={"report","negative_zero","invalid","bounds","event","event_missing"},"missing vector")
+    check(set(frames)=={"report","negative_zero","invalid","bounds","event","event_missing"} | {f"mask_{n}" for n in range(128)},"missing vector")
     decoded={name:decode(port,payload,"FARM_WS_01") for name,(port,payload) in frames.items()}
     expected=dict(device_id="FARM_WS_01",sequence_number=1052,timestamp=1795453200000,period_s=300,
                   temperature=29.5,humidity=78.2,pressure=1008.4,wind_speed=6.3,wind_gust=8.8,
@@ -27,6 +27,24 @@ def native(log):
                          humidity_x10=782,pressure_x10=10084,wind_x10=63,gust_x10=88,
                          direction_deg=135,rain_tips=9,battery_mv=3200,status=0,valid_mask=127)
     check(golden.SerializeToString(deterministic=True)==frames["report"][1],"protoc reference bytes mismatch")
+    groups=(("temperature",),("humidity",),("pressure",),("wind_speed","wind_gust"),
+            ("wind_direction",),("rainfall",),("battery_voltage",))
+    for mask in range(128):
+        label=f"mask_{mask}"
+        expected_partial=dict(expected,valid_mask=mask)
+        reference=WeatherRecord()
+        reference.CopyFrom(golden)
+        reference.valid_mask=mask
+        proto_groups=(("temp_x10",),("humidity_x10",),("pressure_x10",),("wind_x10","gust_x10"),
+                      ("direction_deg",),("rain_tips",),("battery_mv",))
+        for bit, keys in enumerate(groups):
+            if not mask & (1<<bit):
+                for key in keys:
+                    expected_partial.pop(key)
+                for field in proto_groups[bit]:
+                    reference.ClearField(field)
+        check(decoded[label]==expected_partial,"mask round trip "+label)
+        check(reference.SerializeToString(deterministic=True)==frames[label][1],"reference mask mismatch "+label)
     n=decoded["negative_zero"]
     check(n["temperature"]==-12.5 and n["period_s"]==900 and all(n[k]==0 for k in ("humidity","wind_speed","wind_gust","wind_direction","rainfall")),"negative/zero round trip")
     check(set(decoded["invalid"])=={"device_id","sequence_number","timestamp","period_s","status","valid_mask"},"invalid fields published")
@@ -43,7 +61,8 @@ def native(log):
     return dict(result="PASS",scope="native STM32 codec and protoc reference, not RF",
                 json_bytes=j,protobuf_bytes=p,reduction_percent=round(100*(j-p)/j,2),
                 daily_json_bytes=j*288,daily_protobuf_bytes=p*288,
-                vectors={n:dict(fport=f,hex=b.hex(),bytes=len(b),decoded=decoded[n]) for n,(f,b) in frames.items()})
+                validity_masks_verified=128,
+                vectors={n:dict(fport=f,hex=b.hex(),bytes=len(b),decoded=decoded[n]) for n,(f,b) in frames.items() if not n.startswith("mask_")})
 
 def serial(log):
     records=re.findall(r'(EVENT|TELEMETRY) (\{[^{}\r\n]*\})',log)

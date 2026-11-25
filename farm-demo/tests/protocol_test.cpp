@@ -13,6 +13,11 @@ int main(){
     Record r{1052,1795453200,300,295,782,10084,63,88,135,9,3200,0,127};
     const auto example=encode(r);assert(example.size==37);
     emit("report",PERIODIC_PORT,example);
+    for(unsigned mask=0;mask<=farm::quality::ALL;++mask){
+        auto partial=r;partial.valid=mask;
+        const auto name=std::string("mask_")+std::to_string(mask);
+        emit(name.c_str(),PERIODIC_PORT,encode(partial));
+    }
     r.sequence=1053;r.period_s=900;r.temperature=-125;r.humidity=0;r.wind=0;r.gust=0;r.direction=0;r.rain=0;
     emit("negative_zero",PERIODIC_PORT,encode(r));
     r.sequence=1054;r.valid=0;r.status=16;
