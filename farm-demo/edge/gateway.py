@@ -13,6 +13,7 @@ from pathlib import Path
 from outbox import connect, store, quarantine, CapacityError, diagnostics, BUDGET
 from protocol import decode, ACK_PORT
 from weather_pb2 import WeatherAck
+import rpc
 
 LOG = logging.getLogger("farm.edge")
 UPLINK = re.compile(r"application/([A-Za-z0-9_-]+)/device/([0-9a-f]{16})/event/up")
@@ -52,7 +53,8 @@ def parse_uplink(topic, raw, mapping):
     require(info["applicationId"] == app and info["devEui"].lower() == dev, "device/topic mismatch")
     port = body["fPort"]
     payload = base64.b64decode(body["data"], validate=True)
-    record = decode(port, payload, station)
+    record = (dict(rpc.decode_result(payload), device_id=station) if port==22 else decode(port, payload, station))
+    if port==22: record.update(timestamp=record['ts_s']*1000,sequence_number=record['sequence'])
     received = utc_ms(body["time"])
     require(received >= MIN_TS and MIN_TS <= record["timestamp"] <= received+300000,
             "untrusted measurement clock")
@@ -80,7 +82,19 @@ def handle(db, mapping, topic, raw, *, budget=BUDGET):
         # Store a bounded reason and raw excerpt; never print payloads/secrets.
         quarantine(db, f"invalid uplink: {type(exc).__name__}: {str(exc)[:160]}", topic, raw)
         return "invalid", None
-    status = store(db, record, meta, budget=budget)
+    rpc.schema(db)
+    if meta['fport']==22:
+        try:
+            result={k:v for k,v in record.items() if k not in ('device_id','timestamp','sequence_number')}
+            status=rpc.record_result(db,record['device_id'],result,meta['received_at'] if not meta['simulated'] else rpc.now_ms())
+        except ValueError:
+            quarantine(db,'invalid/conflicting command result',topic,raw)
+            return 'invalid',None
+    else:
+        if db.execute('SELECT 1 FROM command_receipts WHERE station=? AND sequence=?',(record['device_id'],record['sequence_number'])).fetchone():
+            quarantine(db,'weather/command sequence collision',topic,raw)
+            return 'conflict',None
+        status = store(db, record, meta, budget=budget)
     if status == "conflict":
         quarantine(db, "conflicting record identity", topic, raw, meta["received_at"])
         return status, None
@@ -102,6 +116,7 @@ def run_service(args):
     fatal = []
     # All callbacks use one database connection on the network-loop thread.
     db = connect(args.db, recover=False)
+    rpc.schema(db)
     def on_connect(c, userdata, flags, reason, properties):
         if reason.is_failure:
             fatal.append(str(reason))
@@ -121,6 +136,11 @@ def run_service(args):
                 publication = c.publish(topic, json.dumps(command), qos=1, retain=False)
                 if publication.rc != 0:
                     raise RuntimeError("ACK publish not queued")
+                record, meta, app, dev = parse_uplink(message.topic,message.payload,mapping)
+                pending=rpc.next_downlink(db,record["device_id"],app,dev,
+                    logical_ts=meta["received_at"] if meta["simulated"] else None)
+                if pending and c.publish(pending[0],json.dumps(pending[1]),qos=1,retain=False).rc != 0:
+                    raise RuntimeError("RPC downlink not queued")
             if message.qos:
                 if c.ack(message.mid, message.qos) != 0:
                     raise RuntimeError("MQTT acknowledgement failed")

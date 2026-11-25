@@ -145,13 +145,15 @@ void driveOutputs(){
     digitalWrite(buzzer,(actuation.buzzer||controller.testing(station.seconds))?HIGH:LOW);
     digitalWrite(relay,(actuation.stopRequest||controller.snapshot().stop)?HIGH:LOW);
 }
+uint32_t lastCommandFrame=0;
 void applyCommand(const farm::wire::Payload& p){
     farm::control::Command c;
-    if(!radio.commandWindow(station.seconds)||!farm::control::decode(p,c)){
+    if(!radio.commandWindow(station.seconds)||lastCommandFrame==radio.frameCounter||!farm::control::decode(p,c)){
         WeatherSerial.println("RPC_FRAME_REJECTED");return;
     }
     uint32_t now=0;
     const bool trusted=clockTrusted&&farm::storage::timestamp(EPOCH,clockOffset,station.seconds,now);
+    lastCommandFrame=radio.frameCounter;
     // A response needs a durable sequence before any side effect.
     if(!reserveRecord())return;
     const auto r=controller.execute(c,now,trusted,safeForConfig(),station.seconds);

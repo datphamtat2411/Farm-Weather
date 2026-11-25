@@ -18,7 +18,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class MqttRestCloud:
     def __init__(self, host, port, base_url, devices, *, token=None, api_token=None,
-                 demo=False, timeout=5, ca_file=None, api_key=None):
+                 demo=False, timeout=5, ca_file=None, api_key=None, rpc_receiver=None):
         parsed=urllib.parse.urlsplit(base_url)
         if demo:
             if host!="127.0.0.1" or parsed.hostname!="127.0.0.1" or parsed.scheme!="http":
@@ -39,10 +39,27 @@ class MqttRestCloud:
         self.context=ssl.create_default_context(cafile=ca_file)
         self.opener=urllib.request.build_opener(urllib.request.HTTPSHandler(context=self.context),NoRedirect())
         self.ready=threading.Event()
-        self.client.on_connect=lambda c,u,f,r,p: self.ready.set() if not r.is_failure else None
+        self.rpc_receiver=rpc_receiver
+        self.client.on_connect=self.on_connect
+        self.client.on_subscribe=self.on_subscribe
+        self.client.on_message=self.on_message
         self.client.on_disconnect=self.on_disconnect
         self.running=False
         self.announced=set()
+
+    def on_connect(self, client, userdata, flags, reason, properties):
+        if not reason.is_failure:
+            if self.rpc_receiver is None:
+                self.ready.set()
+            else:
+                client.subscribe("v1/gateway/rpc",qos=1)
+
+    def on_subscribe(self, client, userdata, mid, reasons, properties):
+        if not any(r.is_failure for r in reasons): self.ready.set()
+
+    def on_message(self, client, userdata, message):
+        if self.rpc_receiver and message.topic=="v1/gateway/rpc" and not message.retain:
+            self.rpc_receiver(message.payload)
 
     def on_disconnect(self, client, userdata, flags, reason, properties):
         self.ready.clear()

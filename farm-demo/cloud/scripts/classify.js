@@ -27,6 +27,13 @@ if (gateway) {
     var last = Number(metadata.ss_farm_state_ts || metadata.ss_farm_monitor_since || now);
     metadata.farm_route = 'tick';
     metadata.farm_stale = String(now-last > period*2000);
+} else if (msg.farm_command === true) {
+    var keys = Object.keys(msg).filter(function(k){return k !== 'farm_command';});
+    if (keys.length !== 1 || !/^command_[0-9a-f]{32}$/.test(keys[0]) ||
+        typeof msg[keys[0]] !== 'string' || msg[keys[0]].length > 4096 || ts > now+300000)
+        return invalid('command status');
+    delete msg.farm_command;
+    metadata.farm_route = 'command';
 } else {
     var event = typeof msg.event_record_id === 'string';
     var seq = event ? msg.event_sequence_number : msg.sequence_number;

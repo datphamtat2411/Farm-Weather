@@ -17,6 +17,7 @@ class SerialBridge:
         self.app, self.dev, self.publish, self.epoch_s = app, dev_eui, publish, epoch_s
         self.active = None
         self.ack = None
+        self.command = None
         self.offset = 0
         self.trusted = False
         self.manual = False
@@ -34,9 +35,13 @@ class SerialBridge:
             return
         try:
             command = json.loads(raw)
-            if command["devEui"] != self.dev or command["fPort"] != 20:
+            if command["devEui"] != self.dev:
                 return
             data = base64.b64decode(command["data"], validate=True)
+            if command["fPort"]==21:
+                if 0<len(data)<=51: self.command=data.hex()
+                return
+            if command["fPort"]!=20: return
             ack = WeatherAck.FromString(data)
             if list(ack.sequence_number) == [self.active]:
                 self.ack = data.hex()
@@ -45,6 +50,7 @@ class SerialBridge:
 
     def on_line(self, line):
         line = line.strip()
+        if line.startswith(("BOOT ","RADIO_TX ")) or line=="LINK_DOWN": self.command=None
         if line.startswith("BOOT "):
             self.manual, self.trusted, self.active, self.ack = False, False, None, None
             return "ACK MANUAL"
@@ -67,6 +73,10 @@ class SerialBridge:
                              fPort=int(port), fCnt=int(fcnt), data=base64.b64encode(bytes.fromhex(wire)).decode(),
                              time=received.isoformat(), timeTrusted=self.trusted, simulation=True, rxInfo=[])
                 self.publish(self.up_topic, json.dumps(event))
+        if line=="RX1" and self.active is not None and self.command:
+            command="DOWNLINK 21 "+self.command
+            self.command=None
+            return command
         if line in ("RX1", "RX2") and self.ack:
             command = "DOWNLINK 20 "+self.ack
             self.active, self.ack = None, None

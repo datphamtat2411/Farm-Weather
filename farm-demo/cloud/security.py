@@ -168,7 +168,7 @@ def install_security(api, topology, emails):
         expected = set()
         operations = ["READ", "READ_TELEMETRY"] if name == "reader" else READ
         if name == "control":
-            operations = READ + ["RPC_CALL"]
+            operations = READ + ["RPC_CALL", "WRITE_ATTRIBUTES"]
         device_role = role(api, customer, "Farm " + name + " station", "GROUP", operations)
         expected.add(bind(api, ug, device_role, station_group))
         if name in HUMAN_ROLES:

@@ -90,6 +90,10 @@ def graph(chain_id, root_id, notify, *, gateway=False):
     reject = g.node("action.TbLogNode", "Reject malformed farm message",
         js_config("return 'Farm invalid telemetry: ' + metadata.farm_reason;"), x=1060,y=420)
     g.link(route,historic,"history")
+    if not gateway:
+        command_history=g.save("Command lifecycle history",True,1060,160)
+        command_latest=g.save("Command status latest",False,1320,160)
+        g.link(route,command_history,"command");g.link(command_history,command_latest)
     g.link(route,reject,"invalid")
     # Native alarms are processed serially within the originator queue; restore the
     # original payload after action nodes return an ALARM message.

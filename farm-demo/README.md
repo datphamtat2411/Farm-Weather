@@ -57,3 +57,7 @@ See [deployment and integration contract](docs/task-10-thingsboard.md).
 ## Task 11 — Cloud Rule Engine
 
 See [native Rule Engine and alarm contract](docs/task-11-rule-engine.md). The development gate includes real ThingsBoard lifecycle and historical-isolation tests; hardware acceptance remains deferred.
+
+## Task 13 — remote control and applied configuration
+
+See [RPC lifecycle and deployment contract](docs/task-13-rpc.md). Native RPC admission is not a device acknowledgement; command results use a separate FPort 22 and telemetry namespace.

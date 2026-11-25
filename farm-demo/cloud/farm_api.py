@@ -116,6 +116,9 @@ class FarmApi:
                     "method": operation, "params": envelope, "persistent": True,
                     "expirationTime": envelope["expires_at_ms"], "requestUUID":command_id,
                     "timeout":10000})
+                if operation=="set_config":
+                    # Desired shared state is distinct from device-reported client state.
+                    self.service.request("POST",f"/api/plugins/telemetry/DEVICE/{station}/SHARED_SCOPE",detail)
                 detail = {"command_id":command_id,**detail}
                 response = {"command_id":command_id,"state":"PENDING","rpc":result}
             elif action == "ack":
