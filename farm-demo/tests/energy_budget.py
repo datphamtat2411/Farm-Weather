@@ -23,7 +23,7 @@ def budget(period_s=300):
             "selected_ah":2,"solar_wh_day":5*2*0.5}
 def report():
     normal,low=budget(300),budget(900)
-    return {"kind":"engineering_budget_not_measurement","normal":normal,"low_power":low,
+    return {"kind":"engineering_budget_not_measurement","rounding_note":"Report rounds daily battery energy to 0.286 Wh before deriving 0.419 Ah; unrounded calculation retained here.","normal":normal,"low_power":low,
             "measurement_savings_percent":100*(1-low["measurement_wh_day"]/normal["measurement_wh_day"]),
             "gateway_minimum_ah":192/(12.8*0.9*0.8),"gateway_selected_ah":25}
 if __name__=="__main__":

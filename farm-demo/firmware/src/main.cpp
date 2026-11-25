@@ -78,6 +78,12 @@ void sampleBattery(){
     if(batteryValid){batteryMv=measured;station.battery(measured);}
     else station.batteryInvalid();
 }
+// Arduino Print does not consistently support uint64_t on STM32.
+void printUint64(uint64_t n){
+    char buf[21];unsigned i=sizeof(buf);buf[--i]='\0';
+    do {buf[--i]=char('0'+n%10);n/=10;}while(n);
+    WeatherSerial.print(buf+i);
+}
 void emitTelemetry(){
     unsigned angle=0;
     const bool directionUsable=directionValid && station.windPeriodValid && station.windPeriod>0 && directionPeriod.mean(angle);
@@ -119,8 +125,8 @@ void emitTelemetry(){
     s.print(",\"battery_samples\":");s.print(batterySamples);
     // Copy atomically: counters and 64-bit accumulators are shared with EXTI.
     noInterrupts();power.account(micros());const auto stats=power;interrupts();
-    s.print(",\"sim_active_us\":");s.print((uint32_t)stats.active_us);
-    s.print(",\"sim_sleep_us\":");s.print((uint32_t)stats.sleep_us);
+    s.print(",\"sim_active_us\":");printUint64(stats.active_us);
+    s.print(",\"sim_sleep_us\":");printUint64(stats.sleep_us);
     s.print(",\"sleep_entries\":");s.print(stats.sleep_entries);
     s.print(",\"rtc_wakes\":");s.print(stats.rtc_wakes);
     s.print(",\"pulse_wakes\":");s.print(stats.pulse_wakes);
