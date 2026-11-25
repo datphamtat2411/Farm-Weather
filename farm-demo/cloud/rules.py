@@ -195,20 +195,20 @@ def install(api, topology):
 
 def ensure_watchdog(api, station_id):
     name = "Farm weather watchdog " + STATION
-    configuration = {"originatorId": {"entityType": "DEVICE", "id": station_id},
-                     "msgType": "FARM_WATCHDOG", "msgBody": {},
+    originator = {"entityType": "DEVICE", "id": station_id}
+    configuration = {"msgType": "FARM_WATCHDOG", "msgBody": {},
                      "metadata": {"deviceName": STATION}}
     existing = api.named("/api/schedulerEvents", name)
     if existing:
         event = api.request("GET", "/api/schedulerEvent/" + existing["id"]["id"])
-        if event["configuration"] != configuration or event["type"] != "FARM_WATCHDOG":
+        if event["configuration"] != configuration or event["type"] != "FARM_WATCHDOG" or event.get("originatorId") != originator:
             raise ValueError("existing watchdog has incompatible configuration")
         if not event["enabled"] or event["schedule"]["repeat"]["endsOn"] <= int(time.time()*1000):
             raise ValueError("watchdog disabled or expired")
         return event
     start = int(time.time()*1000)+60000
     return api.request("POST", "/api/schedulerEvent", {"name": name, "type": "FARM_WATCHDOG",
-        "enabled": True, "configuration": configuration,
+        "enabled": True, "originatorId": originator, "configuration": configuration,
         "schedule": {"timezone": "UTC", "startTime": start,
                      "repeat": {"type": "TIMER", "repeatInterval": 60, "timeUnit": "SECONDS",
                                 "endsOn": start+365*86400000}}})
