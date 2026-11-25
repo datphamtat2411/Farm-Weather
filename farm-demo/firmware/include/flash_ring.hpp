@@ -14,6 +14,13 @@ inline uint32_t load32(const uint8_t* p){
 inline void store32(uint8_t* p,uint32_t n){
     for(unsigned i=0;i<4;++i)p[i]=uint8_t(n>>(8*i));
 }
+// Keep the original UTC timestamp on replay. For new measurements, a
+// trusted logical clock must not wrap or reset to the original epoch.
+inline bool timestamp(uint32_t epoch,uint32_t offset,uint32_t elapsed,uint32_t& out){
+    const uint64_t t=uint64_t(epoch)+offset+elapsed;
+    if(!t||t>UINT32_MAX)return false;
+    out=uint32_t(t);return true;
+}
 inline bool filled(const uint8_t* p,unsigned n,uint8_t v){
     for(unsigned i=0;i<n;++i)if(p[i]!=v)return false;
     return true;
@@ -193,7 +200,7 @@ public:
     // Prefer events but alternate with periodic and between newest and oldest
     // to prevent starvation during recovery. Oversize stays pending.
     bool select(unsigned maxBytes,bool eventFirst,bool newest,Frame& out){
-        if(!healthy)return false;
+        if(!healthy||!count)return false;
         unsigned pick=slots;
         for(unsigned pass=0;pass<2&&pick==slots;++pass){
             const uint8_t wanted=(eventFirst!=(pass!=0))?wire::EVENT_PORT:wire::PERIODIC_PORT;

@@ -37,6 +37,8 @@ unsigned batteryMv=3200;
 bool batteryValid=true, directionValid=false;
 constexpr uint32_t TICK_MS=tick_ms;
 constexpr uint32_t EPOCH=1795453200UL;
+uint32_t clockOffset=0,recordTimestamp=0;
+bool clockTrusted=false;
 // Wokwi ADC uses fixed simulated Vref. Production target must measure VREFINT.
 constexpr unsigned SIM_VREF_MV=3300;
 
@@ -126,6 +128,9 @@ void queueRecord(uint8_t port,const farm::wire::Payload& payload){
     if(result==farm::storage::StoreResult::IoError)WeatherSerial.println("HARDWARE_ERROR FLASH_IO");
 }
 bool reserveRecord(){
+    if(!clockTrusted||!farm::storage::timestamp(EPOCH,clockOffset,station.seconds,recordTimestamp)){
+        WeatherSerial.println("BUFFER_GAP CLOCK_INVALID");return false;
+    }
     sequence=ring.reserve();
     if(sequence)return true;
     WeatherSerial.println("HARDWARE_ERROR FLASH_SEQUENCE");
@@ -225,7 +230,7 @@ void emitTelemetry(){
     auto& s=WeatherSerial;
     s.print("TELEMETRY {\"device_id\":\"FARM_WS_01\",\"sequence_number\":");
     s.print(sequence);
-    s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
+    s.print(",\"ts_s\":");s.print(recordTimestamp);
     s.print(",\"period_s\":");s.print(station.periodElapsed);
     if(valid&farm::quality::TEMPERATURE){
         s.print(",\"temperature\":");s.print(atmosphere.temperature.filtered,1);
@@ -248,7 +253,7 @@ void emitTelemetry(){
     s.print(",\"status\":");s.print(station.status);
     s.print(",\"valid_mask\":");s.print(valid);
     farm::wire::Record record{};
-    record.sequence=sequence;record.ts=EPOCH+station.seconds;record.period_s=station.periodElapsed;
+    record.sequence=sequence;record.ts=recordTimestamp;record.period_s=station.periodElapsed;
     record.valid=valid;record.status=station.status;
     if(valid&farm::quality::TEMPERATURE)record.temperature=farm::wire::x10(atmosphere.temperature.filtered);
     if(valid&farm::quality::HUMIDITY)record.humidity=unsigned(farm::wire::x10(atmosphere.humidity.filtered));
@@ -300,7 +305,7 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     // Shared sequence namespace with periodic records; no periodic rain increment.
     auto& s=WeatherSerial;
     s.print("EVENT {\"device_id\":\"FARM_WS_01\",\"kind\":\"event\",\"sequence_number\":");s.print(sequence);
-    s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
+    s.print(",\"ts_s\":");s.print(recordTimestamp);
     s.print(",\"changed_mask\":");s.print(changed);
     s.print(",\"status\":");s.print(station.status);
     s.print(",\"requested_period_s\":");s.print(station.period);
@@ -314,7 +319,7 @@ void emitEvent(unsigned changed,unsigned changedFaults){
     if(atmosphere.temperature.valid){s.print(",\"temperature\":");s.print(latestTemperature,1);}
     if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
     farm::wire::Event event{};
-    event.sequence=sequence;event.ts=EPOCH+station.seconds;event.changed=changed;event.status=station.status;
+    event.sequence=sequence;event.ts=recordTimestamp;event.changed=changed;event.status=station.status;
     event.requested_period=station.period;event.fault=faultMask();event.changed_fault=changedFaults;
     switch(actuation.mode){
         case farm::LocalMode::Alarm:event.mode=farm::wire::Mode::Alarm;break;
@@ -352,6 +357,12 @@ void setup(){
     WeatherSerial.println(ambientReady?"BME280_I2C_READY":"BME280_INIT_FAILED");
     noInterrupts();tips=0;windPulses=0;interrupts();
     readAmbient();sampleDirection();
+    // The simulator's independent clock continues across MCU reset. A fresh
+    // simulation has a fresh NOR image and a new clock anchor.
+    clockTrusted=flash.readClock(clockOffset)&&(!ring.highwater||clockOffset>0);
+    WeatherSerial.print("SIM_RTC offset=");WeatherSerial.print(clockOffset);
+    WeatherSerial.print(" trusted=");WeatherSerial.println(clockTrusted?1:0);
+    if(!clockTrusted)WeatherSerial.println("HARDWARE_ERROR CLOCK_INVALID");
     nextTick=millis()+TICK_MS;
     WeatherSerial.println("READY FARM_WS_01 SIMULATION");
 }

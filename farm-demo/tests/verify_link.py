@@ -9,6 +9,7 @@ def verify(log):
         if not ok: raise ValueError(msg)
     req("HARDWARE_ERROR" not in log and "BUFFER_GAP" not in log,"storage failure")
     req("FLASH_READY highwater=0 pending=0 corrupt=0" in log,"unexpected initial storage")
+    req("SIM_RTC offset=0 trusted=1" in log,"untrusted simulator clock")
     down=log.index("LINK_DOWN")
     up=log.index("LINK_UP")
     auto=log.index("ACK_AUTO")

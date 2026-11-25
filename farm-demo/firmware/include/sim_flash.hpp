@@ -15,6 +15,11 @@ public:
     bool program(unsigned at,const uint8_t* data,unsigned n){
         return n&&!(at%8)&&!(n%8)&&at<storage::bytes&&n<=storage::bytes-at&&bus.memoryCommand(1,at,data,n);
     }
+    bool readClock(uint32_t& logicalSeconds){
+        uint8_t data[4];
+        if(!bus.memoryRead(0,data,sizeof(data),3))return false;
+        logicalSeconds=storage::load32(data);return true;
+    }
     bool erasePage(unsigned at){
         return !(at%storage::page)&&at<storage::bytes&&bus.memoryCommand(2,at,nullptr,0);
     }

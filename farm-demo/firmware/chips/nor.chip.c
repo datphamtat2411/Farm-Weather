@@ -10,7 +10,10 @@
 typedef struct {
   uint8_t memory[65536];
   uint32_t address;
-  uint8_t command, phase;
+  uint8_t command, phase, clock_index;
+  bool clock_started;
+  uint64_t clock_anchor;
+  uint32_t clock_snapshot;
 } state_t;
 static bool connect_cb(void *data,uint32_t address,bool read) {
   (void)address;
@@ -20,14 +23,27 @@ static bool connect_cb(void *data,uint32_t address,bool read) {
 }
 static uint8_t read_cb(void *data) {
   state_t *s=data;
+  if(s->command==3){
+    if(s->clock_index>=4)return 0xff;
+    return (uint8_t)(s->clock_snapshot>>(8*s->clock_index++));
+  }
   return s->address<sizeof(s->memory)?s->memory[s->address++]:0xff;
 }
 static bool write_cb(void *data,uint8_t value) {
   state_t *s=data;
-  if(s->phase==0){s->command=value;s->phase=1;return value<=2;}
+  if(s->phase==0){s->command=value;s->phase=1;return value<=3;}
   if(s->phase==1){s->address=(uint32_t)value<<8;s->phase=2;return true;}
   if(s->phase==2){
     s->address|=value;s->phase=3;
+    if(s->command==3){
+      if(s->address!=0)return false;
+      uint64_t now=get_sim_nanos();
+      if(!s->clock_started){s->clock_anchor=now;s->clock_started=true;}
+      if(now<s->clock_anchor)return false;
+      uint64_t seconds=(now-s->clock_anchor)/100000000ull;
+      if(seconds>UINT32_MAX)return false;
+      s->clock_snapshot=(uint32_t)seconds;s->clock_index=0;
+    }
     if(s->command==2){
       if(s->address%2048)return false;
       memset(s->memory+s->address,0xff,2048);

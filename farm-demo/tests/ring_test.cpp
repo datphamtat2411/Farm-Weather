@@ -42,6 +42,10 @@ static void same(const storage::Frame& a,const storage::Frame& b){
     assert(a.sequence==b.sequence&&a.port==b.port&&a.payload.size==b.payload.size&&!memcmp(a.payload.data,b.payload.data,a.payload.size));
 }
 int main(){
+    uint32_t timestamp=0;
+    assert(storage::timestamp(1795453200,0,300,timestamp)&&timestamp==1795453500);
+    assert(storage::timestamp(1795453200,400,300,timestamp)&&timestamp==1795453900);
+    assert(!storage::timestamp(UINT32_MAX,1,0,timestamp));
     Nor flash;Ring r(flash);assert(r.begin());
     const auto a=make(r);assert(r.append(a)==storage::StoreResult::Stored);
     const auto b=make(r,11);assert(r.append(b)==storage::StoreResult::Stored);

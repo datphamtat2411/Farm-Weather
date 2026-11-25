@@ -55,8 +55,8 @@ public:
         for(unsigned i=0;ok&&i<n;++i)ok=put(data[i]);
         stop();return ok;
     }
-    bool memoryRead(unsigned address,uint8_t* data,unsigned n){
-        if(!memoryCommand(0,address,nullptr,0))return false;
+    bool memoryRead(unsigned address,uint8_t* data,unsigned n,uint8_t command=0){
+        if(!memoryCommand(command,address,nullptr,0))return false;
         bool ok=start()&&put((0x50<<1)|1);
         for(unsigned i=0;ok&&i<n;++i)ok=get(data[i],i+1<n);
         stop();return ok;
