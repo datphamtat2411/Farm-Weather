@@ -81,7 +81,8 @@ jobs:
           python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json
       - name: Report fork limitation
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        run: echo 'External fork: build/native tests only; Wokwi simulation NOT VERIFIED (no secret access).' >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo 'External fork: build/native tests only; Wokwi simulation NOT VERIFIED (no secret access).' >> "$GITHUB_STEP_SUMMARY"
       - name: Archive evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
