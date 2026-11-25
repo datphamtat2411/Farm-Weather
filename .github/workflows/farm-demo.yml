@@ -33,7 +33,7 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/weather_test.cpp -o /tmp/weather-test
           /tmp/weather-test | tee farm-demo/evidence/native.log
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: native-evidence
@@ -72,7 +72,7 @@ jobs:
           if [ "$TARGET" = bluepill_f103c8 ]; then
             cp firmware.bin firmware.elf "$GITHUB_WORKSPACE/farm-demo/evidence/"
           fi
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: firmware-${{ matrix.target }}
@@ -126,7 +126,7 @@ jobs:
       - name: Verify telemetry and persistent SQLite idempotency
         run: |
           python farm-demo/tests/verify_smoke.py farm-demo/evidence/serial.log farm-demo/evidence/weather.sqlite | tee farm-demo/evidence/smoke.json
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: simulation-evidence
@@ -147,5 +147,8 @@ jobs:
           SIMULATION: ${{ needs.simulation.result }}
         run: |
           printf 'Native: %s\nFirmware targets: %s\nSimulation: %s\n' "$NATIVE" "$FIRMWARE" "$SIMULATION" | tee -a "$GITHUB_STEP_SUMMARY"
-          test "$NATIVE" = success && test "$FIRMWARE" = success && test "$SIMULATION" = success
+          if [[ "$NATIVE" != success || "$FIRMWARE" != success || "$SIMULATION" != success ]]; then
+            echo "::error::Mandatory Task 01 job failed, was cancelled, or was skipped."
+            exit 1
+          fi
           echo 'All mandatory Task 01 demo checks passed. Review the separate license provenance check too.' >> "$GITHUB_STEP_SUMMARY"
