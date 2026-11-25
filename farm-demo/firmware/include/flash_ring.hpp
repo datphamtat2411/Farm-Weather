@@ -38,7 +38,7 @@ template<class Flash> class Ring {
     uint32_t sequences[slots]={};
     bool sent[slots]={};
     unsigned cursor=0, metaPage=0, metaNext=0;
-    bool healthy=false, warning=false;
+    bool healthy=false, warning=false, reserved=false;
     static constexpr unsigned metaEntries=page/8;
     static unsigned address(unsigned i){return metadata+i*slot;}
     static uint32_t checksum(const uint8_t* b){
@@ -56,8 +56,19 @@ template<class Flash> class Ring {
         return out.payload.ok;
     }
     void updateWarning(){
-        if(count*100>=slots*80)warning=true;
-        else if(count*100<slots*70)warning=false;
+        unsigned occupied=0;
+        for(unsigned first=0;first<slots;first+=per_page){
+            unsigned used=0;bool pending=false;
+            for(unsigned i=first;i<first+per_page;++i){
+                if(ports[i])++used;
+                if(ports[i]>=10)pending=true;
+            }
+            if(pending)occupied+=used;
+        }
+        // ACKed slots stranded on a page with pending data still use space.
+        usedSlots=occupied;
+        if(usedSlots*100>=slots*80)warning=true;
+        else if(usedSlots*100<slots*70)warning=false;
     }
     bool fail(){healthy=false;return false;}
     bool recoverMetadata(){
@@ -80,9 +91,9 @@ template<class Flash> class Ring {
         if(!highwater&&(ends[0]||ends[1]))return false;
         return true;
     }
-    bool reclaim(unsigned& index){
-        for(unsigned n=0;n<slots/per_page;++n){
-            const unsigned first=((cursor/per_page+n)%(slots/per_page))*per_page;
+    bool reclaim(unsigned& index,unsigned bound){
+        for(unsigned n=0;n<bound/per_page;++n){
+            const unsigned first=((cursor/per_page+n)%(bound/per_page))*per_page;
             bool pending=false;
             for(unsigned j=first;j<first+per_page;++j)if(ports[j]>=10)pending=true;
             if(pending)continue;
@@ -96,12 +107,12 @@ template<class Flash> class Ring {
     }
 public:
     uint32_t highwater=0;
-    unsigned count=0,corrupt=0;
+    unsigned count=0,corrupt=0,usedSlots=0;
     explicit Ring(Flash& f):flash(f){}
     bool ready() const{return healthy;}
     bool nearFull() const{return warning;}
     bool begin(){
-        healthy=false;highwater=0;count=0;corrupt=0;cursor=0;metaPage=0;metaNext=0;warning=false;
+        healthy=false;highwater=0;count=0;corrupt=0;cursor=0;metaPage=0;metaNext=0;warning=false;reserved=false;usedSlots=0;
         memset(ports,0,sizeof(ports));memset(lengths,0,sizeof(lengths));
         memset(sequences,0,sizeof(sequences));memset(sent,0,sizeof(sent));
         if(!recoverMetadata())return false;
@@ -112,11 +123,13 @@ public:
             if(!flash.read(address(i)+8,b+8,56))return false;
             ports[i]=1;
             Frame f;
-            if(!unpack(b,f)||f.sequence>highwater){++corrupt;continue;}
+            if(!unpack(b,f)){++corrupt;continue;}
+            if(f.sequence>highwater)return false; // metadata loss: never reuse identity
+            for(unsigned j=0;j<i;++j)if(sequences[j]==f.sequence)return false;
+            sequences[i]=f.sequence;
             if(filled(b+56,8,0))continue; // explicit application ACK persisted
             // Nonblank partial ACK is not interpreted as a valid ACK.
             if(!filled(b+56,8,0xff)){++corrupt;return false;}
-            for(unsigned j=0;j<i;++j)if(ports[j]>=10&&sequences[j]==f.sequence)return false;
             ports[i]=f.port;lengths[i]=uint8_t(f.payload.size);sequences[i]=f.sequence;++count;
         }
         updateWarning();healthy=true;return true;
@@ -126,6 +139,7 @@ public:
     // never reuse. The old journal page remains valid during rollover.
     uint32_t reserve(){
         if(!healthy||highwater==UINT32_MAX)return 0;
+        reserved=false;
         if(metaNext==metaEntries){
             const unsigned other=1-metaPage;
             if(!flash.erasePage(other*page)){fail();return 0;}
@@ -137,27 +151,30 @@ public:
         if(!flash.program(at,b,8)||!flash.read(at,verify,8)||memcmp(b,verify,8)){
             fail();return 0;
         }
-        ++metaNext;highwater=next;return next;
+        ++metaNext;highwater=next;reserved=true;return next;
     }
     StoreResult append(const Frame& f){
         if(!healthy)return StoreResult::IoError;
-        if(!f.sequence||f.sequence!=highwater||!f.payload.ok||
+        if(!reserved||!f.sequence||f.sequence!=highwater)return StoreResult::Invalid;
+        reserved=false;
+        if(!f.payload.ok||
            (f.port!=wire::PERIODIC_PORT&&f.port!=wire::EVENT_PORT))return StoreResult::Invalid;
         for(unsigned i=0;i<slots;++i)if(ports[i]>=10&&sequences[i]==f.sequence)return StoreResult::Invalid;
         wire::Payload prefix;prefix.field(1,f.sequence);
         if(f.payload.size<prefix.size||f.payload.size>wire::capacity||
            f.payload.size-prefix.size>46||memcmp(f.payload.data,prefix.data,prefix.size))return StoreResult::Invalid;
-        if(count==slots||(f.port==wire::PERIODIC_PORT&&count>=slots-event_reserve))return StoreResult::Full;
+        const unsigned bound=f.port==wire::PERIODIC_PORT?slots-event_reserve:slots;
+        if(count==slots)return StoreResult::Full;
         unsigned index=slots;
         uint8_t b[slot];
-        for(unsigned n=0;n<slots;++n){
-            const unsigned i=(cursor+n)%slots;
+        for(unsigned n=0;n<bound;++n){
+            const unsigned i=(cursor+n)%bound;
             if(ports[i])continue;
             if(!flash.read(address(i),b,slot)){fail();return StoreResult::IoError;}
             if(!filled(b,slot,0xff)){ports[i]=1;++corrupt;continue;}
             index=i;break;
         }
-        if(index==slots&&!reclaim(index))return healthy?StoreResult::Full:StoreResult::IoError;
+        if(index==slots&&!reclaim(index,bound)){updateWarning();return healthy?StoreResult::Full:StoreResult::IoError;}
         memset(b,0xff,sizeof(b));
         store32(b,f.sequence);b[8]=f.port;b[9]=uint8_t(f.payload.size-prefix.size);
         memcpy(b+10,f.payload.data+prefix.size,b[9]);
@@ -189,7 +206,8 @@ public:
         uint8_t b[slot];
         if(!flash.read(address(pick),b,slot)){fail();return false;}
         if(!unpack(b,out)||out.sequence!=sequences[pick]||out.port!=ports[pick]||out.payload.size!=lengths[pick]){
-            ++corrupt;fail();return false;
+            // Quarantine the damaged slot; other pending records can still be sent.
+            ++corrupt;ports[pick]=1;sent[pick]=false;--count;updateWarning();return false;
         }
         return true;
     }

@@ -26,7 +26,7 @@ steps:
   - delay: 3000ms
   - write-serial: "ACK AUTO\n"
   - wait-serial: 'ACK_AUTO'
-  - wait-serial: 'pending=0'
+  - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'
   - expect-pin:
       part-id: mcu
       name: B9

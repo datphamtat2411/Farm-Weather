@@ -10,7 +10,7 @@ Mục tiêu: không tiêu hao phút mô phỏng Wokwi trên commit phát triển
 
 Không có trigger pull_request cho workflow demo: cùng commit nhánh nội bộ chỉ build một lần. Workflow license upstream vẫn chạy trên PR. Scope hiện tại là nhánh demo của repo; không cấu hình fork PR hay thay đổi branch protection. Không dùng continue-on-error, không cache kết quả PASS khác SHA, không giả lập log evidence. GitHub job summary ghi rõ DEFERRED.
 
-Offline preflight chỉ compile chip WASM và lint bằng CLI v0.29.1 đã pin SHA256, không cung cấp WOKWI_CLI_TOKEN và không khởi chạy simulator. Hardware workflow tải artifact từ chính run của mình, kiểm tra commit.txt và SHA256 firmware/chip trước mô phỏng. Không gọi remote khi development thất bại. Matrix tự sinh từ ci/scenarios.json và kiểm tra đầy đủ mọi YAML trong thư mục scenarios, bao gồm bốn scenario hiện hành với verifier đã có. Khi thêm kịch bản Task 07/13/17, phải đăng ký vào registry, giữ kiểm tra đủ phạm vi, không bỏ scenario cũ. Các kiểm thử backend/frontend bổ sung vào development workflow khi các thành phần đó xuất hiện.
+Offline preflight chỉ compile chip WASM và lint bằng CLI v0.29.1 đã pin SHA256, không cung cấp WOKWI_CLI_TOKEN và không khởi chạy simulator. Hardware workflow tải artifact từ chính run của mình, kiểm tra commit.txt và SHA256 firmware/chip trước mô phỏng. Không gọi remote khi development thất bại. Matrix tự sinh từ ci/scenarios.json và kiểm tra đầy đủ mọi YAML trong thư mục scenarios, bao gồm năm scenario hiện hành với verifier đã có. Khi thêm kịch bản Task 07/13/17, phải đăng ký vào registry, giữ kiểm tra đủ phạm vi, không bỏ scenario cũ. Các kiểm thử backend/frontend bổ sung vào development workflow khi các thành phần đó xuất hiện.
 
 ## Chỉ yêu cầu Wokwi tại mốc Task 17
 
@@ -25,4 +25,4 @@ Nếu workflow chưa tồn tại ở default branch master, GitHub có thể kh�
 
 native-evidence, firmware-bluepill_f103c8, firmware-nucleo_l476rg, wokwi-preflight. Simulation xuất artifact theo từng scenario và run attempt (simulation-<id>-attempt-<n>) cùng commit và checksum. Log từ simulation thật và JSON verifier là bằng chứng, không phải giá trị đo vật lý. Artifact lưu 30 ngày. Không đưa secret vào mã nguồn.
 
-Số lần gọi remote của push phát triển: 0. Một đợt nghiệm thu đầy đủ hiện tại: 4 scenario (weather, invalid-ambient, local-alarms, power). Số phút tính quota thực tế phụ thuộc Wokwi, chưa thể cam kết đủ quota cho Task 17; dự trù thêm các bài kiểm thử Task 06–16 và lần sửa lỗi. Không giảm tốc độ xác nhận hoặc thời gian cửa sổ nghiệp vụ chỉ để tiết kiệm phút.
+Số lần gọi remote của push phát triển: 0. Một đợt nghiệm thu đầy đủ hiện tại: 5 scenario (weather, invalid-ambient, local-alarms, power, link-recovery). Số phút tính quota thực tế phụ thuộc Wokwi, chưa thể cam kết đủ quota cho Task 17; dự trù thêm các bài kiểm thử Task 06–16 và lần sửa lỗi. Không giảm tốc độ xác nhận hoặc thời gian cửa sổ nghiệp vụ chỉ để tiết kiệm phút.

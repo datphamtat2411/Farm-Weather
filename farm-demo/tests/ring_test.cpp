@@ -84,11 +84,31 @@ int main(){
         auto x=make(full,11);assert(full.append(x)==storage::StoreResult::Stored);
     }
     assert(full.count==960);auto extra=make(full,11);assert(full.append(extra)==storage::StoreResult::Full);
-    Ring fullBoot(fullFlash);assert(fullBoot.begin()&&fullBoot.count==960&&fullBoot.highwater==962);
-    for(uint32_t seq=1;seq<=300;++seq){fullBoot.markSent(seq);assert(fullBoot.acknowledge(seq));}
+    Ring fullBoot(fullFlash);assert(fullBoot.begin()&&fullBoot.count==960&&fullBoot.highwater==962&&fullBoot.usedSlots==960);
+    for(uint32_t seq=1;seq<=320;++seq){fullBoot.markSent(seq);assert(fullBoot.acknowledge(seq));}
     assert(!fullBoot.nearFull());
     for(unsigned i=0;i<64;++i){auto x=make(fullBoot);assert(fullBoot.append(x)==storage::StoreResult::Stored);}
-    Ring reclaimed(fullFlash);assert(reclaimed.begin()&&reclaimed.count==724&&reclaimed.highwater==1026);
+    Ring reclaimed(fullFlash);assert(reclaimed.begin()&&reclaimed.count==704&&reclaimed.highwater==1026);
+    // With no recoverable journal but a valid slot, fail closed rather than
+    // issue an already used sequence. A torn reservation never reuses a
+    // committed identity, even when journal page rollover is interrupted.
+    Nor missing;Ring m(missing);assert(m.begin());auto first=make(m);
+    assert(m.append(first)==storage::StoreResult::Stored);
+    assert(m.append(first)==storage::StoreResult::Invalid);
+    missing.erasePage(0);missing.erasePage(storage::page);
+    Ring unsafe(missing);assert(!unsafe.begin());
+    Nor rollover;Ring before(rollover);assert(before.begin());
+    for(unsigned i=0;i<256;++i)assert(before.reserve()==i+1);
+    rollover.budget=3;assert(!before.reserve());
+    rollover.budget=-1;Ring again(rollover);assert(again.begin()&&again.highwater==256);
+    assert(again.reserve()==257);
+    // Fragmented common region cannot consume the physically reserved event page.
+    Nor fragment;Ring fr(fragment);assert(fr.begin());
+    for(unsigned i=0;i<928;++i){auto x=make(fr);assert(fr.append(x)==storage::StoreResult::Stored);}
+    for(uint32_t seq=1;seq<=928;seq+=32){fr.markSent(seq);assert(fr.acknowledge(seq));}
+    assert(fr.count==899&&fr.usedSlots==928);
+    auto blocked=make(fr);assert(fr.append(blocked)==storage::StoreResult::Full);
+    auto urgent=make(fr,11);assert(fr.append(urgent)==storage::StoreResult::Stored);
     // Malformed and grouped ACKs.
     link::Ack decoded;wire::Payload group;group.field(1,1);group.field(1,7);
     assert(link::decodeAck(group,decoded)&&decoded.count==2&&decoded.ids[1]==7);

@@ -120,7 +120,8 @@ void queueRecord(uint8_t port,const farm::wire::Payload& payload){
     const bool warned=ring.nearFull();
     const auto result=ring.append({sequence,port,payload});
     WeatherSerial.print(result==farm::storage::StoreResult::Stored?"BUFFER_STORED ":"BUFFER_GAP ");
-    WeatherSerial.print(sequence);WeatherSerial.print(" pending=");WeatherSerial.println(ring.count);
+    WeatherSerial.print(sequence);WeatherSerial.print(" pending=");WeatherSerial.print(ring.count);
+    WeatherSerial.print(" used=");WeatherSerial.println(ring.usedSlots);
     if(!warned&&ring.nearFull())WeatherSerial.println("BUFFER_WARNING_ON");
     if(result==farm::storage::StoreResult::IoError)WeatherSerial.println("HARDWARE_ERROR FLASH_IO");
 }
@@ -132,7 +133,12 @@ bool reserveRecord(){
 }
 void applyAck(uint8_t port,const farm::wire::Payload& p){
     const bool warned=ring.nearFull();
+    const unsigned window=radio.window(station.seconds);
     const unsigned accepted=radio.downlink(station.seconds,port,p);
+    WeatherSerial.print("ACK_FRAME ts=");WeatherSerial.print(station.seconds);
+    WeatherSerial.print(" window=");WeatherSerial.print(window);
+    WeatherSerial.print(" fport=");WeatherSerial.print(port);
+    WeatherSerial.print(" hex=");printHex(p);WeatherSerial.println();
     WeatherSerial.print("DOWNLINK fport=");WeatherSerial.print(port);
     WeatherSerial.print(" rx="); // Window may close after accepting current ACK.
     WeatherSerial.print(accepted?"accepted":"rejected");
@@ -192,14 +198,18 @@ void serviceRadio(){
             applyAck(farm::wire::ACK_PORT,ack);mockCommitted=0;
         }
     }
+    const unsigned corruptBefore=ring.corrupt;
     radio.tick(station.seconds,[](const farm::storage::Frame& f,uint32_t counter){
         WeatherSerial.print("RADIO_TX seq=");WeatherSerial.print(f.sequence);
         WeatherSerial.print(" fcnt=");WeatherSerial.print(counter);
         WeatherSerial.print(" fport=");WeatherSerial.print(f.port);
         WeatherSerial.print(" hex=");printHex(f.payload);
-        WeatherSerial.print(" delivered=");WeatherSerial.println(linkUp?1:0);
+        WeatherSerial.print(" delivered=");WeatherSerial.print(linkUp?1:0);
+        WeatherSerial.print(" ts=");WeatherSerial.println(station.seconds);
         mockCommitted=linkUp?f.sequence:0;
     });
+    if(ring.corrupt!=corruptBefore){WeatherSerial.print("BUFFER_CORRUPT total=");WeatherSerial.println(ring.corrupt);}
+    if(!ring.ready())WeatherSerial.println("HARDWARE_ERROR FLASH_RADIO");
 }
 
 void emitTelemetry(){
