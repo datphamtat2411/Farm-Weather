@@ -14,6 +14,8 @@ struct PowerMonitor {
     void begin(uint32_t now){since=now;}
     void account(uint32_t now){
         const uint32_t elapsed=now-since;
+        // Reject short backward clock jitter; preserve true uint32 wrap.
+        if(elapsed>0x7fffffffu)return;
         if(state==PowerState::Sleep)sleep_us+=elapsed;
         else active_us+=elapsed;
         since=now;

@@ -78,6 +78,9 @@ template<class Flash> class Ring {
         else if(usedSlots*100<slots*70)warning=false;
     }
     bool fail(){healthy=false;return false;}
+    // Optional backend blank-check accelerator. Scan actual storage bytes.
+    template<class F> static auto blank(F& f,bool& empty,int)->decltype(f.blank(empty),bool()){return f.blank(empty);}
+    template<class F> static bool blank(F&,bool& empty,long){empty=false;return true;}
     bool recoverMetadata(){
         uint8_t b[128];
         unsigned ends[2]={};
@@ -122,6 +125,9 @@ public:
         healthy=false;highwater=0;count=0;corrupt=0;cursor=0;metaPage=0;metaNext=0;warning=false;reserved=false;usedSlots=0;
         memset(ports,0,sizeof(ports));memset(lengths,0,sizeof(lengths));
         memset(sequences,0,sizeof(sequences));memset(sent,0,sizeof(sent));
+        bool empty=false;
+        if(!blank(flash,empty,0))return false;
+        if(empty){healthy=true;return true;}
         if(!recoverMetadata())return false;
         uint8_t b[slot];
         for(unsigned i=0;i<slots;++i){

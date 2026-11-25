@@ -9,20 +9,23 @@
 namespace farm {
 class SimI2c {
     uint32_t sda,scl;
-    static void release(uint32_t pin){pinMode(pin,INPUT_PULLUP);}
-    static void low(uint32_t pin){digitalWrite(pin,LOW);pinMode(pin,OUTPUT);}
-    static void half(){delayMicroseconds(5);}
+    // PB6/PB7 are configured open-drain once, with external pull-ups.
+    static uint32_t mask(uint32_t pin){return pin==PB6?(1u<<6):(1u<<7);}
+    static void release(uint32_t pin){GPIOB->BSRR=mask(pin);}
+    static void low(uint32_t pin){GPIOB->BSRR=mask(pin)<<16;}
+    static bool level(uint32_t pin){return (GPIOB->IDR&mask(pin))!=0;}
+    static void half(){delayMicroseconds(2);}
     bool clockHigh(){
         release(scl);
         const uint32_t start=micros();
-        while(!digitalRead(scl)){
+        while(!level(scl)){
             if(uint32_t(micros()-start)>=1000)return false;
         }
         half();return true;
     }
     bool start(){
         release(sda);
-        if(!clockHigh()||!digitalRead(sda))return false;
+        if(!clockHigh()||!level(sda))return false;
         low(sda);half();low(scl);half();return true;
     }
     void stop(){
@@ -35,13 +38,13 @@ class SimI2c {
             low(scl);half();byte<<=1;
         }
         release(sda);half();if(!clockHigh())return false;
-        const bool ack=!digitalRead(sda);low(scl);half();return ack;
+        const bool ack=!level(sda);low(scl);half();return ack;
     }
     bool get(uint8_t& byte,bool ack){
         release(sda);byte=0;
         for(unsigned i=0;i<8;++i){
             half();if(!clockHigh())return false;
-            byte=uint8_t((byte<<1)|(digitalRead(sda)?1:0));low(scl);half();
+            byte=uint8_t((byte<<1)|(level(sda)?1:0));low(scl);half();
         }
         if(ack)low(sda);else release(sda);
         half();if(!clockHigh())return false;
@@ -49,7 +52,7 @@ class SimI2c {
     }
 public:
     SimI2c(uint32_t data,uint32_t clock):sda(data),scl(clock){}
-    void begin(){release(sda);release(scl);}
+    void begin(){pinMode(sda,OUTPUT_OPEN_DRAIN);pinMode(scl,OUTPUT_OPEN_DRAIN);release(sda);release(scl);}
     bool memoryCommand(uint8_t command,unsigned address,const uint8_t* data,unsigned n){
         bool ok=start()&&put(0x50<<1)&&put(command)&&put(uint8_t(address>>8))&&put(uint8_t(address));
         for(unsigned i=0;ok&&i<n;++i)ok=put(data[i]);

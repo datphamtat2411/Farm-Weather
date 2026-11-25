@@ -5,6 +5,17 @@
     "VCC",
     "GND",
     "SCL",
-    "SDA"
+    "SDA",
+    "COMMAND_READY"
+  ],
+  "controls": [
+    {
+      "id": "scenario_command",
+      "label": "Virtual gateway command (0 idle; 1–5 link/ACK; 6–10 RPC frames)",
+      "type": "range",
+      "min": 0,
+      "max": 10,
+      "step": 1
+    }
   ]
 }

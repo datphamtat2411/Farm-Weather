@@ -16,7 +16,7 @@
       "top": -140,
       "left": 180,
       "attrs": {
-        "value": "384"
+        "value": "184"
       }
     },
     {
@@ -25,7 +25,7 @@
       "top": -140,
       "left": 280,
       "attrs": {
-        "value": "568"
+        "value": "517"
       }
     },
     {
@@ -114,6 +114,24 @@
       "top": 90,
       "left": 310,
       "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "i2c_scl_pull",
+      "top": -60,
+      "left": 430,
+      "attrs": {
+        "value": "4700"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "i2c_sda_pull",
+      "top": -30,
+      "left": 430,
+      "attrs": {
+        "value": "4700"
+      }
     }
   ],
   "connections": [
@@ -295,6 +313,36 @@
       "flash:SDA",
       "mcu:B7",
       "green",
+      []
+    ],
+    [
+      "i2c_scl_pull:1",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "i2c_scl_pull:2",
+      "mcu:B6",
+      "blue",
+      []
+    ],
+    [
+      "i2c_sda_pull:1",
+      "mcu:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "i2c_sda_pull:2",
+      "mcu:B7",
+      "green",
+      []
+    ],
+    [
+      "flash:COMMAND_READY",
+      "mcu:B11",
+      "purple",
       []
     ]
   ]

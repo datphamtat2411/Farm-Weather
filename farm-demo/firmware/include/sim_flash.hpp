@@ -9,6 +9,14 @@ class Flash {
     SimI2c& bus;
 public:
     explicit Flash(SimI2c& b):bus(b){}
+    bool blank(bool& empty){
+        uint8_t result=0xff;
+        if(!bus.memoryRead(0,&result,1,6)||result>1)return false;
+        empty=result==1;return true;
+    }
+    bool scenarioCommand(char* out,unsigned n){
+        return bus.memoryRead(0,reinterpret_cast<uint8_t*>(out),n,7);
+    }
     bool read(unsigned at,uint8_t* data,unsigned n){
         return n&&at<storage::bytes&&n<=storage::bytes-at&&bus.memoryRead(at,data,n);
     }
