@@ -61,3 +61,7 @@ See [native Rule Engine and alarm contract](docs/task-11-rule-engine.md). The de
 ## Task 13 — remote control and applied configuration
 
 See [RPC lifecycle and deployment contract](docs/task-13-rpc.md). Native RPC admission is not a device acknowledgement; command results use a separate FPort 22 and telemetry namespace.
+
+## Task 16 — Demo scenario console
+
+See [cloud scenario runner and presentation evidence](docs/task-16-demo.md). The development gate executes configurable scenarios using native firmware and the real Edge pipeline with isolated Cloud history model; actual Wokwi acceptance remains deferred to Task 17.

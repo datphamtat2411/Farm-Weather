@@ -1,0 +1,23 @@
+{
+  "name": "D01 – Thời tiết ổn định",
+  "segments": [
+    {
+      "seconds": 310,
+      "set": {
+        "temperature": 29.5,
+        "humidity": 78.2,
+        "pressure": 1008.4,
+        "direction": 135,
+        "wind_hz": 9
+      }
+    },
+    {
+      "seconds": 310,
+      "set": {
+        "temperature": 30,
+        "humidity": 74,
+        "direction": 90
+      }
+    }
+  ]
+}
