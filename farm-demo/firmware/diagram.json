@@ -225,7 +225,7 @@
     ],
     [
       "rain:1.l",
-      "mcu:PB1",
+      "mcu:B1",
       "green",
       []
     ],
@@ -236,7 +236,7 @@
       []
     ],
     [
-      "mcu:PB8",
+      "mcu:B8",
       "r1:1",
       "green",
       []
@@ -254,7 +254,7 @@
       []
     ],
     [
-      "mcu:PB9",
+      "mcu:B9",
       "r2:1",
       "green",
       []
@@ -272,13 +272,13 @@
       []
     ],
     [
-      "mcu:PA9",
+      "mcu:A9",
       "$serialMonitor:RX",
       "green",
       []
     ],
     [
-      "mcu:PA10",
+      "mcu:A10",
       "$serialMonitor:TX",
       "green",
       []

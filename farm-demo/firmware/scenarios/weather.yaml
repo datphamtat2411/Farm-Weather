@@ -1,4 +1,4 @@
-name: Weather station alarm and rain
+name: Weather station foundation smoke
 version: 1
 steps:
   - wait-serial: 'READY FARM_WS_01 SIMULATION'
@@ -7,25 +7,51 @@ steps:
       name: position
       value: 0.1
   - delay: 500ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
   - set-control:
       part-id: wind
       name: position
       value: 0.9
   - wait-serial: 'WIND_ALARM_ON'
+  - delay: 150ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 1
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 1
   - set-control:
       part-id: rain
       name: pressed
       value: 1
+  - wait-serial: 'RAIN_TIPS=1'
   - delay: 150ms
   - set-control:
       part-id: rain
       name: pressed
       value: 0
-  - wait-serial: 'RAIN_TIPS=1'
   - set-control:
       part-id: wind
       name: position
       value: 0.1
   - wait-serial: 'WIND_ALARM_OFF'
+  - delay: 150ms
+  - expect-pin:
+      part-id: mcu
+      name: B8
+      value: 0
+  - expect-pin:
+      part-id: mcu
+      name: B9
+      value: 0
   - wait-serial: 'TELEMETRY'
   - delay: 200ms

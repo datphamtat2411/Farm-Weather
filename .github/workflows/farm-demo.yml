@@ -55,8 +55,8 @@ jobs:
       - name: Install pinned Wokwi CLI
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          curl --fail --silent --show-error --location --retry 3 -o "$RUNNER_TEMP/wokwi-cli" https://github.com/wokwi/wokwi-cli/releases/download/v0.26.1/wokwi-cli-linuxstatic-x64
-          echo "72d968150babaf7532c47ab7741eb85a95a6c3e3cfef91ffbcfdb677fd38e811  $RUNNER_TEMP/wokwi-cli" | sha256sum --check
+          curl --fail --silent --show-error --location --retry 3 -o "$RUNNER_TEMP/wokwi-cli" https://github.com/wokwi/wokwi-cli/releases/download/v0.29.1/wokwi-cli-linuxstatic-x64
+          echo "3c9d6da007d008a3822ab468318037285440055132c59fd659d7306e40f14258  $RUNNER_TEMP/wokwi-cli" | sha256sum --check
           chmod +x "$RUNNER_TEMP/wokwi-cli"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/wokwi-cli" --version >> farm-demo/evidence/toolchain.txt
