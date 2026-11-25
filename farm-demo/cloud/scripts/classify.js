@@ -5,8 +5,10 @@ function invalid(reason) {
     metadata.farm_route = 'invalid'; metadata.farm_reason = reason;
     return {msg: {}, metadata: metadata, msgType: msgType};
 }
-var ts = Number(metadata.ts);
 var now = Date.now();
+var tick = !gateway && msgType === 'FARM_WATCHDOG';
+var ts = tick ? now : Number(metadata.ts);
+if (tick) metadata.ts = String(ts);
 if (!integer(ts) || ts <= 0) return invalid('timestamp');
 var period = Number(metadata.ss_expected_period_s || 300);
 if (period !== 300 && period !== 900) period = 300;
@@ -21,7 +23,7 @@ if (gateway) {
     var prior = String(metadata.ss_farm_buffer_warning || 'false') === 'true';
     metadata.farm_buffer = String(msg.disk_bytes*100 >= msg.budget_bytes*(prior ? 70 : 80));
     metadata.farm_route = 'health';
-} else if (msg.farm_watchdog === true) {
+} else if (tick) {
     var last = Number(metadata.ss_farm_state_ts || metadata.ss_farm_monitor_since || now);
     metadata.farm_route = 'tick';
     metadata.farm_stale = String(now-last > period*2000);
@@ -62,8 +64,8 @@ if (gateway) {
     metadata.farm_status = String(status);
     metadata.farm_period = String(p);
     metadata.farm_event = String(event);
-    // A periodic sample older than a same-second event may update measurement
-    // latest, but never the state. Store the periodic cursor only on state path.
+    // A fresh periodic sample can refresh the weather cursor independently
+    // when a newer event already owns the station-state cursor.
     if (metadata.farm_route === 'latest') metadata.farm_route = 'periodic';
 }
 metadata.farm_original = JSON.stringify(msg);

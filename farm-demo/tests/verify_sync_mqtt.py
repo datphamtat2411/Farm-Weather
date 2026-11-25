@@ -83,7 +83,7 @@ def run(edge_path,cloud_path):
                     for dev,rows in payload.items():
                         for r in rows:
                             for k,v in r["values"].items():
-                                if k=="sync_mode": continue
+                                if k in ("sync_mode","sync_state"): continue
                                 value=json.dumps(v) if type(v) is bool else str(v)
                                 db.execute("INSERT INTO history VALUES(?,?,?,?) ON CONFLICT(device,ts,key) DO UPDATE SET value=excluded.value",
                                     (dev,r["ts"],k,value))

@@ -33,7 +33,7 @@ class Cloud:
             for dev,rs in packet.items():
                 for r in rs:
                     self.history.setdefault((dev,r["ts"]),{}).update(
-                        {k:v for k,v in r["values"].items() if k!="sync_mode"})
+                        {k:v for k,v in r["values"].items() if k not in ("sync_mode","sync_state")})
         if self.fail_after_write: raise CloudUnavailable("lost response")
 
 def record(seq,ts,kind="periodic",device="FARM_WS_01"):
@@ -139,6 +139,18 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(self.insert(record(1,BASE)),"duplicate")
         self.assertEqual(self.insert(dict(record(1,BASE),rainfall=5)),"conflict")
         self.assertEqual([delay_ms(i,lambda a,b:0) for i in range(1,8)],[5000,10000,20000,40000,60000,60000,60000])
+    def test_state_routing_across_record_kinds(self):
+        self.cloud.available=True
+        self.insert(record(1,BASE,"event"))
+        self.insert(record(2,BASE+1000))
+        self.insert(record(3,BASE+2000,"event"))
+        self.step(3)
+        v={x["values"].get("record_id",x["values"].get("event_record_id")):x["values"]
+           for packet in self.cloud.packets for rows in packet.values() for x in rows}
+        self.assertEqual(v["FARM_WS_01:1"]["sync_mode"],"history")
+        self.assertEqual(v["FARM_WS_01:2"]["sync_mode"],"live")
+        self.assertEqual(v["FARM_WS_01:2"]["sync_state"],"history")
+        self.assertEqual(v["FARM_WS_01:3"]["sync_mode"],"live")
     def test_verifier_types(self):
         self.assertEqual(compare({"record_id":"a","rainfall":0.2794},{"record_id":"a","rainfall":"0.2794"}),"verified")
         self.assertEqual(compare({"record_id":"a","rainfall":0.2794},{"record_id":"a","rainfall":"0"}),"conflict")

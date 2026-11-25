@@ -2,7 +2,7 @@
 import json
 import time
 from pathlib import Path
-from provision import ApiError, ensure_attributes, STATION, GATEWAY
+from provision import ensure_attributes, STATION
 
 ROOT = Path(__file__).resolve().parent
 PREFIX = "org.thingsboard.rule.engine."
@@ -39,8 +39,9 @@ class Graph:
     def switch(self, name, script, x, y):
         return self.node("filter.TbJsSwitchNode", name, js_config(script), x=x, y=y)
     def save(self, name, history, x, y):
-        settings = {"type": "ADVANCED", "timeseries": ON, "latest": SKIP,
-                    "webSockets": SKIP, "calculatedFields": SKIP} if history else ON
+        settings = {"type": "ADVANCED", "timeseries": ON if history else SKIP,
+                    "latest": SKIP if history else ON, "webSockets": SKIP if history else ON,
+                    "calculatedFields": SKIP if history else ON}
         return self.node("telemetry.TbMsgTimeseriesNode", name,
                          {"defaultTTL": 0, "useServerTs": False, "processingSettings": settings}, 1,x,y)
 
@@ -63,25 +64,32 @@ def graph(chain_id, root_id, notify, *, gateway=False):
     g = Graph()
     entry = g.node("filter.TbMsgTypeSwitchNode", "Message Type Switch", {}, x=180,y=220)
     passthrough = g.node("flow.TbRuleChainInputNode", "Platform default non-telemetry",
-                         {"ruleChainId": root_id, "forwardMsgToDefaultRuleChain": False}, x=400,y=60)
-    for label in ("Post attributes", "RPC Request from Device", "RPC Request to Device", "Other"):
+                         {"ruleChainId": root_id, "forwardMsgToDefaultRuleChain": False}, 1,x=400,y=60)
+    for label in ("Post attributes", "RPC Request from Device", "RPC Request to Device"):
         g.link(entry, passthrough,label)
     fetch = g.node("metadata.TbGetAttributesNode", "Read durable originator state",
         {"clientAttributeNames": [], "sharedAttributeNames": [], "serverAttributeNames": STATE_KEYS,
          "latestTsKeyNames": [], "tellFailureIfAbsent": False, "getLatestValueWithTs": False,
          "fetchTo": "METADATA"}, 1,400,220)
     g.link(entry,fetch,"Post telemetry")
+    if gateway:
+        g.link(entry,passthrough,"Other")
+    else:
+        custom = g.switch("Scheduled Cloud watchdog",
+            "return [msgType === 'FARM_WATCHDOG' ? 'tick' : 'other'];",400,340)
+        g.link(entry,custom,"Other")
+        g.link(custom,fetch,"tick")
+        g.link(custom,passthrough,"other")
     classify = g.transform("Validate and classify", (ROOT/"scripts/classify.js").read_text().replace(
         "__GATEWAY__", "true" if gateway else "false"),620,220)
     g.link(fetch,classify)
     route = g.switch("Live / history / watchdog / health / invalid", "return [metadata.farm_route];",840,220)
     g.link(classify,route)
     historic = g.save("Save history ONLY",True,1060,60)
-    current = g.save("Save current + history + WebSocket",False,1060,160)
+    current = g.save("Publish current values + WebSocket",False,3000,900)
     reject = g.node("action.TbLogNode", "Reject malformed farm message",
         js_config("return 'Farm invalid telemetry: ' + metadata.farm_reason;"), x=1060,y=420)
     g.link(route,historic,"history")
-    g.link(route,current,"latest")
     g.link(route,reject,"invalid")
     # Native alarms are processed serially within the originator queue; restore the
     # original payload after action nodes return an ALARM message.
@@ -111,9 +119,9 @@ def graph(chain_id, root_id, notify, *, gateway=False):
         restore = g.transform("Continue "+name,"return {msg: JSON.parse(metadata.farm_original), metadata: metadata, msgType: 'POST_TELEMETRY_REQUEST'};",x+280,540)
         g.link(switch,create,"on");g.link(switch,clear,"off");g.link(switch,restore,"skip")
         g.link(create,n,"Created")
-        for label in ("Updated","False"):
+        for label in ("Updated","False","Success"):
             g.link(create,restore,label)
-        for label in ("Cleared","False"):
+        for label in ("Cleared","False","Success"):
             g.link(clear,restore,label)
         g.link(n,restore)
         start,start_labels=restore,["Success"]
@@ -121,18 +129,21 @@ def graph(chain_id, root_id, notify, *, gateway=False):
     tail = g.switch("Persist state only for accepted records","return [metadata.farm_route === 'tick' ? 'tick' : 'persist'];",3000,780)
     g.link(start,tail)
     state = g.transform("Build server-side current state", (ROOT/"scripts/state.js").read_text(),3260,780)
-    g.link(tail,state,"persist")
+    update_latest = g.switch("Publish latest before committing cursor","return [metadata.farm_save];",3200,900)
+    g.link(tail,update_latest,"persist")
     if not gateway:
-        g.link(route,state,"periodic")
+        g.link(route,update_latest,"periodic")
+    g.link(update_latest,current,"latest")
+    g.link(update_latest,state,"history")
+    g.link(current,state)
     attr = g.node("telemetry.TbMsgAttributesNode","Persist confirmed state", {
         "processingSettings":ON,"scope":"SERVER_SCOPE","notifyDevice":False,
         "sendAttributesUpdatedNotification":False,"updateAttributesOnlyOnValueChange":True},3,3500,780)
     g.link(state,attr)
     restore = g.transform("Restore clean telemetry","return {msg: JSON.parse(metadata.farm_original), metadata: metadata, msgType: 'POST_TELEMETRY_REQUEST'};",3740,780)
     g.link(attr,restore)
-    final = g.switch("Save accepted telemetry","return [metadata.farm_save];",3980,780)
-    g.link(restore,final)
-    g.link(final,current,"latest");g.link(final,historic,"history")
+    # Historical readback is the Edge commit signal: write history last.
+    g.link(restore,historic)
     return dict(ruleChainId=chain_id, firstNodeIndex=entry,nodes=g.nodes,connections=g.links)
 
 def install(api, topology):
@@ -175,4 +186,26 @@ def install(api, topology):
         result[key]=chain_id["id"]
     station={"id":{"id":topology["devices"][STATION],"entityType":"DEVICE"}}
     ensure_attributes(api,station,"SERVER_SCOPE",{"farm_monitor_since":int(time.time()*1000)})
+    scheduler = ensure_watchdog(api, topology["devices"][STATION])
+    result["watchdog"] = scheduler["id"]["id"]
     return result
+
+def ensure_watchdog(api, station_id):
+    name = "Farm weather watchdog " + STATION
+    configuration = {"originatorId": {"entityType": "DEVICE", "id": station_id},
+                     "msgType": "FARM_WATCHDOG", "msgBody": {},
+                     "metadata": {"deviceName": STATION}}
+    existing = api.named("/api/schedulerEvents", name)
+    if existing:
+        event = api.request("GET", "/api/schedulerEvent/" + existing["id"]["id"])
+        if event["configuration"] != configuration or event["type"] != "FARM_WATCHDOG":
+            raise ValueError("existing watchdog has incompatible configuration")
+        if not event["enabled"] or event["schedule"]["repeat"]["endsOn"] <= int(time.time()*1000):
+            raise ValueError("watchdog disabled or expired")
+        return event
+    start = int(time.time()*1000)+30000
+    return api.request("POST", "/api/schedulerEvent", {"name": name, "type": "FARM_WATCHDOG",
+        "enabled": True, "configuration": configuration,
+        "schedule": {"timezone": "UTC", "startTime": start,
+                     "repeat": {"type": "TIMER", "repeatInterval": 30, "timeUnit": "SECONDS",
+                                "endsOn": start+365*86400000}}})

@@ -67,8 +67,15 @@ def run(url, ca, port):
         eventually(lambda:adapter.read(packet).get((STATION,ts),{}).get(
             "event_record_id" if event else "record_id")==f"{STATION}:{number}","native history write")
         return number,ts,packet
+    # Use the actual server scheduler; accelerate only the trigger frequency
+    # in the disposable CI instance. No telemetry heartbeat or station token.
+    scheduler_id=topology["rule_chains"]["watchdog"]
+    scheduler=api.request("GET","/api/schedulerEvent/"+scheduler_id)
+    scheduler["schedule"]["startTime"]=int(time.time()*1000)+2000
+    scheduler["schedule"]["repeat"]["repeatInterval"]=2
+    api.request("POST","/api/schedulerEvent",scheduler)
     def tick():
-        adapter.publish({STATION:[{"ts":int(time.time()*1000),"values":{"farm_watchdog":True}}]})
+        time.sleep(3)
     def health(percent):
         adapter.publish_health(dict(disk_bytes=percent,budget_bytes=100,pending=2,
             oldest_age_ms=1000,state="ONLINE"),int(time.time()*1000))
@@ -83,21 +90,24 @@ def run(url, ca, port):
         a=expect(station,expected)
         wind=a["WIND_HIGH"]["id"]["id"]
         api.request("POST",f"/api/alarm/{wind}/ack")
-        eventually(lambda:active(station)["WIND_HIGH"]["acknowledged"],"ack is not clear")
+        eventually(lambda:active(station).get("WIND_HIGH",{}).get("acknowledged"),"ack is not clear")
         adapter.publish(p)
         # A late normal record must not clear the active alarms or change latest weather.
         send(0,history=True,ts=t-1000)
+        # Repeated confirmed state updates the existing active alarm; it is not a new incident.
+        send(31,event=True,period=900)
         assert active(station)["WIND_HIGH"]["id"]["id"]==wind
         assert active(station)["WIND_HIGH"]["acknowledged"]
-        assert len([x for x in alarms(station,False) if x["id"]["id"]==wind])==1
+        assert len([x for x in alarms(station,False) if x["type"]=="WIND_HIGH" and not x["cleared"]])==1
         assert attributes(station)["expected_period_s"]==900
         evidence.append({"case":"five native alarm types + acknowledge + replay","result":"PASS","alarm_ids":{k:v["id"]["id"] for k,v in a.items()}})
         send(0,period=300)
         expect(station,{})
         assert any(x["id"]["id"]==wind and x["cleared"] for x in alarms(station,False))
+        assert len([x for x in alarms(station,False) if x["type"]=="WIND_HIGH" and x["id"]["id"]==wind])==1
         # Old alarm event marked live by a delayed/replayed transport still cannot
         # overrule the durable sequence/timestamp watermark.
-        send(31,event=True,ts=t,number=n-1)
+        send(31,event=True,ts=t-2000,number=900)
         expect(station,{})
         evidence.append({"case":"clear and late live replay cannot re-raise","result":"PASS"})
         # Inject only the persisted measurement age, not a fake Alarm. Exercise
@@ -128,6 +138,7 @@ def run(url, ca, port):
         notices=eventually(lambda: [x for x in api.request("GET","/api/notifications",
             pageSize=100,page=0,deliveryMethod="WEB")["data"] if
             str(x.get("subject","")).startswith("Farm weather:")], "native web notification")
+        assert sum(x.get("subject")=="Farm weather: WIND_HIGH" for x in notices)==1, "duplicate wind notification"
         evidence.append({"case":"native web notifications","result":"PASS","count":len(notices)})
         return {"result":"PASS","rule_chains":topology["rule_chains"],"checks":evidence}
     finally:
