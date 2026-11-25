@@ -96,7 +96,7 @@ void chip_init(void) {
     .sda=pin_init("SDA",INPUT_PULLUP),.connect=connect_cb,.read=read_cb,
     .write=write_cb,.user_data=s};
   i2c_init(&cfg);
-  s->command_attr=attr_init("scenario_command",0);
+  s->command_attr=attr_init("scenarioCommand",0);
   s->ready=pin_init("COMMAND_READY",OUTPUT_LOW);
   timer_config_t timer_cfg={.callback=control_tick,.user_data=s};
   timer_t timer=timer_init(&timer_cfg);timer_start(timer,1000,true);

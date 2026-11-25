@@ -62,7 +62,15 @@ def validate(entries, root=ROOT):
     require(set(MANDATORY) <= ids, "existing required scenario removed")
     return entries
 
+def validate_chip_controls(root=ROOT):
+    for path in (root/"firmware"/"chips").glob("*.chip.json"):
+        chip=json.loads(path.read_text(encoding="utf-8"))
+        ids=[c["id"] for c in chip.get("controls",[])]
+        require(len(ids)==len(set(ids)),"duplicate chip control: "+path.name)
+        require(all(re.fullmatch(r"[a-zA-Z][a-zA-Z0-9]*",i) for i in ids),"invalid chip control ID: "+path.name)
+
 def load():
+    validate_chip_controls()
     return validate(json.loads((ROOT / "ci" / "scenarios.json").read_text(encoding="utf-8")))
 
 def logged(command, log, cwd, env=None):

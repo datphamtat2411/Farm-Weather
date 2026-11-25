@@ -6,11 +6,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
-from scenarios import load, validate, run
+from scenarios import load, validate, run, validate_chip_controls
 
 class ScenarioContractTest(unittest.TestCase):
     def test_all_mandatory_scenarios(self):
         self.assertGreaterEqual(len(load()), 4)
+    def test_invalid_chip_control_id(self):
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            chips=root/"firmware"/"chips"
+            chips.mkdir(parents=True)
+            (chips/"test.chip.json").write_text(json.dumps({"controls":[{"id":"invalid_control"}]}))
+            with self.assertRaisesRegex(ValueError,"invalid chip control ID"):
+                validate_chip_controls(root)
     def test_reject_removed_scenario(self):
         with self.assertRaises(ValueError):
             validate(load()[:-1])

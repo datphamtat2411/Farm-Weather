@@ -10,7 +10,7 @@
   ],
   "controls": [
     {
-      "id": "scenario_command",
+      "id": "scenarioCommand",
       "label": "Virtual gateway command (0 idle; 1–5 link/ACK; 6–10 RPC frames)",
       "type": "range",
       "min": 0,

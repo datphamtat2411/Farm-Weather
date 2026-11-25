@@ -12,7 +12,7 @@ steps:
       value: 0.505
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 1
   - wait-serial: 'LINK_DOWN'
   - set-control:
@@ -31,12 +31,12 @@ steps:
   - delay: 12800ms
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 2
   - wait-serial: 'ACK_DROP'
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 3
   - wait-serial: 'LINK_UP'
   - wait-serial: 'delivered=1'
@@ -49,7 +49,7 @@ steps:
   - wait-serial: 'delivered=1'
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 4
   - wait-serial: 'ACK_AUTO'
   - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'

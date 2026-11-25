@@ -16,12 +16,12 @@ steps:
       value: 3
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 5
   - wait-serial: 'ACK_MANUAL'
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 6
   - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
   - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
@@ -36,7 +36,7 @@ steps:
       value: 0
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 7
   - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
   - wait-serial: 'RPC_RESULT outcome=4 reason=6 version=1'
@@ -46,7 +46,7 @@ steps:
       value: 0
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 8
   - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
   - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=1'
@@ -56,7 +56,7 @@ steps:
       value: 1
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 9
   - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
   - wait-serial: 'RPC_RESULT outcome=3 reason=4 version=1'
@@ -66,13 +66,13 @@ steps:
       value: 0
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 10
   - wait-serial: 'SCENARIO_DOWNLINK_QUEUED'
   - wait-serial: 'RPC_RESULT outcome=1 reason=0 version=2'
   - set-control:
       part-id: flash
-      name: scenario_command
+      name: scenarioCommand
       value: 4
   - wait-serial: 'ACK_AUTO'
   - wait-serial: 'RADIO_TX seq=6 fcnt=6 fport=22'
