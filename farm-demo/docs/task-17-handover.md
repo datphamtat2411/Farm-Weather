@@ -34,3 +34,7 @@ Việc cấp máy chủ, domain, giấy phép và kiểm thử truy cập public
 ## Corrections after first acceptance
 
 Wokwi sessions have a five-minute wall-time limit. The adapter uses a 25x logical clock (40 ms per logical second), time-bucketed GPIO edges, a non-regressing millisecond power counter, open-drain I²C and a blank-check operation on actual simulated NOR bytes. The NOR model exposes a scenario gateway mailbox for deterministic external link/ACK and canonical RPC frame input; existing UART remains for manual use. The mailbox injects inputs only, no outcome. All business windows and counters remain unchanged. Native regression tests and every Wokwi scenario remain required.
+
+### Interrupt timing correction
+
+The inspection button now uses the same bounded EXTI capture queue as wind and rain. The firmware never loses short input events while persisting a record. An edge at the already-closed clock boundary is assigned to the next open window; genuine clock regressions, queue exhaustion and counter saturation remain fatal to acceptance. The gateway mailbox uses a bounded terminated read rather than reading padding bytes. The Wokwi scenarios wait for actual inspection/release evidence and still assert GPIO pins. Native tests cover boundaries, delayed consumption, clock wrap and overflow. The I2C driver uses the tested input-pullup/output-low switching, not direct BSRR writes.

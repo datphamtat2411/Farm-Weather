@@ -22,4 +22,9 @@ assert records[2]["stop_request"] and records[3]["stop_request"] and not records
 assert records[4]["config_version"]==2 and records[4]["wind_alarm_on"]==9
 assert records[4]["wind_alarm_off"]==6 and records[4]["applied_period_s"]==900
 assert "HARDWARE_ERROR" not in log and "RPC_STORAGE_UNAVAILABLE" not in log
+assert log.count("REMOTE_STOP_RELEASED")==1,"local release not observed"
+events=[json.loads(s) for s in re.findall(r"EVENT (\{[^{}\r\n]*\})",log)]
+released=[e for e in events if e["sequence_number"]>records[-1]["sequence"] and e["changed_mask"]==0 and not e["stop_request"]]
+assert len(released)==1 and released[0]["mode"]=="NORMAL","missing local release event"
+
 print(json.dumps({"result":"PASS","scope":"Wokwi logical Class A and simulated output pins","commands":records},indent=2))

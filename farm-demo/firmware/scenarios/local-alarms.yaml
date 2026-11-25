@@ -53,7 +53,7 @@ steps:
       part-id: confirm
       name: pressed
       value: 1
-  - delay: 80ms
+  - wait-serial: 'INSPECTION_CONFIRMED'
   - set-control:
       part-id: confirm
       name: pressed

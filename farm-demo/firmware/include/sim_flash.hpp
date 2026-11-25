@@ -15,7 +15,7 @@ public:
         empty=result==1;return true;
     }
     bool scenarioCommand(char* out,unsigned n){
-        return bus.memoryRead(0,reinterpret_cast<uint8_t*>(out),n,7);
+        return bus.readMailbox(out,n);
     }
     bool read(unsigned at,uint8_t* data,unsigned n){
         return n&&at<storage::bytes&&n<=storage::bytes-at&&bus.memoryRead(at,data,n);

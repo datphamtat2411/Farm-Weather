@@ -7,6 +7,7 @@
 #include "sim_flash.hpp"
 #include "class_a.hpp"
 #include "commands.hpp"
+#include "capture.hpp"
 using namespace farm::sim;
 
 #if !defined(FARM_WOKWI_SIMULATION) || !defined(STM32F103xB)
@@ -20,21 +21,12 @@ unsigned ambientSamples=0,directionSamples=0,batterySamples=0;
 farm::LocalActuation actuation;
 farm::ReadHealth windHealth,directionHealth,batteryHealth;
 float latestTemperature=0;
-bool ambientReady=false,confirmWasPressed=false;
+bool ambientReady=false;
 farm::AmbientProcessor atmosphere;
 farm::DirectionAccumulator directionPeriod;
-// Bucket contact edges by capture time, not by when slow Flash work finishes.
-constexpr unsigned captureSlots=64;
-volatile unsigned rainBuckets[captureSlots]={},windBuckets[captureSlots]={};
-volatile uint32_t captureOrigin=0;
-volatile bool captureReady=false,captureOverflow=false;
-volatile uint32_t consumedSecond=0;
-void capture(volatile unsigned* buckets){
-    if(!captureReady)return;
-    const uint32_t second=(millis()-captureOrigin)/tick_ms+1;
-    if(second<=consumedSecond||second-consumedSecond>=captureSlots){captureOverflow=true;return;}
-    ++buckets[second%captureSlots];
-}
+// Independent contact capture, including brief inspection button taps.
+farm::sim::ContactCapture<> contacts;
+volatile bool captureReady=false;
 uint32_t powerClock(){return millis()*1000u;}
 volatile uint32_t lastTip=0,lastWind=0;
 volatile bool seenTip=false,seenWind=false;
@@ -60,15 +52,18 @@ void rainISR(){
     const uint32_t now=micros();
     if(captureReady)power.wakePulse(powerClock(),false);
     if((!seenTip||int32_t(now-lastTip)>=0)&&farm::acceptPulse(now,lastTip,seenTip,farm::design::rain_debounce_ms*1000/acceleration)){
-        capture(rainBuckets);lastTip=now;seenTip=true;
+        contacts.push(Contact::Rain,millis(),tick_ms);lastTip=now;seenTip=true;
     }
 }
 void windISR(){
     const uint32_t now=micros();
     if(captureReady)power.wakePulse(powerClock(),true);
     if((!seenWind||int32_t(now-lastWind)>=0)&&farm::acceptPulse(now,lastWind,seenWind,farm::design::wind_debounce_ms*1000/acceleration)){
-        capture(windBuckets);lastWind=now;seenWind=true;
+        contacts.push(Contact::Wind,millis(),tick_ms);lastWind=now;seenWind=true;
     }
+}
+void confirmISR(){
+    if(captureReady)contacts.push(Contact::Confirm,millis(),tick_ms);
 }
 unsigned readMedian(uint32_t pin){
     unsigned values[5];
@@ -415,6 +410,7 @@ void setup(){
     pinMode(PB11,INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
+    attachInterrupt(digitalPinToInterrupt(confirm_button),confirmISR,FALLING);
     WeatherSerial.println("BOOT FARM_WS_01");
     ambientReady=ambient.begin();
     WeatherSerial.println(ambientReady?"BME280_I2C_READY":"BME280_INIT_FAILED");
@@ -426,8 +422,8 @@ void setup(){
     WeatherSerial.print("SIM_RTC offset=");WeatherSerial.print(clockOffset);
     WeatherSerial.print(" trusted=");WeatherSerial.println(clockTrusted?1:0);
     if(!clockTrusted)WeatherSerial.println("HARDWARE_ERROR CLOCK_INVALID");
-    noInterrupts();captureOrigin=millis();power.begin(captureOrigin*1000u);captureReady=true;
-    nextTick=captureOrigin+TICK_MS;interrupts();
+    noInterrupts();const uint32_t origin=millis();contacts.begin(origin);power.begin(origin*1000u);captureReady=true;
+    nextTick=origin+TICK_MS;interrupts();
     WeatherSerial.println("READY FARM_WS_01 SIMULATION");
 }
 void loop(){
@@ -441,11 +437,12 @@ void loop(){
     }
     nextTick+=TICK_MS;
     noInterrupts();power.wakeRtc(powerClock());
-    const unsigned index=(station.seconds+1)%captureSlots;
-    const unsigned n=rainBuckets[index],pulses=windBuckets[index];
-    rainBuckets[index]=0;windBuckets[index]=0;consumedSecond=station.seconds+1;
-    const bool overflow=captureOverflow;interrupts();
-    if(overflow){WeatherSerial.println("HARDWARE_ERROR CAPTURE_OVERFLOW");return;}
+    const auto captured=contacts.pop();
+    const auto failure=contacts.failure();interrupts();
+    if(failure!=CaptureError::None){
+        WeatherSerial.print("HARDWARE_ERROR CAPTURE_");WeatherSerial.println(unsigned(failure));return;
+    }
+    const unsigned n=captured.rain,pulses=captured.wind;
     if(n){totalTips+=n;WeatherSerial.print("RAIN_TIPS=");WeatherSerial.println(totalTips);}
     const bool windValid=!digitalRead(wind_fault);
     windHealth.sample(windValid);
@@ -455,15 +452,16 @@ void loop(){
     if(farm::SampleSchedule::battery(station.seconds))sampleBattery();
     const unsigned faults=faultMask();
     station.sensorFault(faults!=0);
-    const bool pressed=!digitalRead(confirm_button);
     const auto before=actuation.mode;
-    actuation.update(station.seconds,station.status,station.windReady,pressed&&!confirmWasPressed);
-    const bool remoteReleased=pressed&&!confirmWasPressed&&controller.confirm(safeForConfig());
-    confirmWasPressed=pressed;
+    actuation.update(station.seconds,station.status,station.windReady,captured.confirm);
+    const bool remoteReleased=captured.confirm&&controller.confirm(safeForConfig());
+    const bool inspected=before==farm::LocalMode::AwaitInspection&&actuation.mode==farm::LocalMode::Normal;
     driveOutputs();
     const unsigned changed=station.status^prevStatus;
     const unsigned changedFaults=prevFaultMask^faults;
     if(changed || changedFaults || before!=actuation.mode || remoteReleased)emitEvent(changed,changedFaults);
+    if(inspected)WeatherSerial.println("INSPECTION_CONFIRMED");
+    if(remoteReleased)WeatherSerial.println("REMOTE_STOP_RELEASED");
     prevFaultMask=faults;
     if(changed&farm::WIND)
         WeatherSerial.println(station.status&farm::WIND?"WIND_ALARM_ON":"WIND_ALARM_OFF");

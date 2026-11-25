@@ -63,6 +63,24 @@ public:
         for(unsigned i=0;ok&&i<n;++i)ok=get(data[i],i+1<n);
         stop();return ok;
     }
+    // Read a bounded, NUL-terminated gateway mailbox. Do not clock another
+    // 80-150 padding bytes while the station is servicing logical ticks.
+    bool readMailbox(char* out,unsigned capacity){
+        if(!capacity||!memoryCommand(7,0,nullptr,0))return false;
+        bool ok=start()&&put((0x50<<1)|1),terminated=false;
+        for(unsigned i=0;ok&&i<capacity;++i){
+            uint8_t byte=0;
+            ok=get(byte,i+1<capacity);
+            if(!ok)break;
+            out[i]=char(byte);
+            if(!byte){
+                terminated=true;
+                if(i+1<capacity){uint8_t end=0;ok=get(end,false)&&end==0;}
+                break;
+            }
+        }
+        stop();return ok&&terminated;
+    }
     bool write(uint8_t reg,uint8_t value){
         bool ok=start()&&put(0x76<<1)&&put(reg)&&put(value);stop();return ok;
     }
