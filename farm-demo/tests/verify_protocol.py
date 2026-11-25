@@ -90,7 +90,16 @@ def serial(log):
                     "rainfall","battery_voltage","wind_window_mps"):
             check((key in d)==(key in r),"measurement presence mismatch "+key)
         result.append(dict(fport=port,protobuf_bytes=len(bytes.fromhex(wire)),record=d))
-    check([r["record"]["sequence_number"] for r in result]==list(range(1,len(result)+1)),"sequence gap")
+    from rpc import decode_result
+    commands={}
+    for seq,raw in re.findall(r"RADIO_TX seq=(\d+) fcnt=\d+ fport=22 hex=([0-9a-f]+) delivered=1 ts=\d+",log):
+        decoded=decode_result(bytes.fromhex(raw))
+        check(decoded["sequence"]==int(seq),"command sequence mismatch")
+        check(int(seq) not in commands or commands[int(seq)]==decoded,"command replay changed")
+        commands[int(seq)]=decoded
+    weather=[r["record"]["sequence_number"] for r in result]
+    check(len(weather)==len(set(weather)) and not set(weather)&set(commands),"sequence collision")
+    check(sorted(weather+list(commands))==list(range(1,len(weather)+len(commands)+1)),"sequence gap")
     return dict(result="PASS",scope="actual Wokwi firmware wire bytes",records=result)
 
 if __name__=="__main__":

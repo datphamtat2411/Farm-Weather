@@ -42,5 +42,7 @@ int main(){
     assert(p.active_us+p.sleep_us==20 && p.sleep_entries==3 && p.rtc_wakes==1);
     assert(p.wind_edges==1 && p.rain_edges==1 && p.pulse_wakes==2);
     assert(p.sleep_us>0 && p.active_us>0);
+    PowerMonitor jitter;jitter.begin(1000);jitter.account(2000);jitter.account(1999);jitter.account(3000);
+    assert(jitter.active_us==2000);
     std::cout<<"Task 05 power schedule, period boundaries, interrupt wake accounting PASS\n";
 }

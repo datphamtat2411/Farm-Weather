@@ -20,6 +20,17 @@ def verify(log_path, db_path):
     # or permissive substrings. Only whitespace is optional between tokens.
     obj = r"(\{[^{}\r\n]*\})"
     prefix = r"\s*".join(re.escape(marker) for marker in markers[:3])
+    # Only recognized newer diagnostics are ignored; preserve strict business grammar.
+    if "HARDWARE_ERROR" in log or "BUFFER_GAP" in log or "RPC_STORAGE_UNAVAILABLE" in log:
+        raise ValueError("hardware failure in smoke trace")
+    diagnostic = re.compile(
+        r"FLASH_READY highwater=0 pending=0 corrupt=0|SIM_RTC offset=0 trusted=1|"
+        r"BUFFER_STORED \d+ pending=\d+ used=\d+|"
+        r"RADIO_TX seq=\d+ fcnt=\d+ fport=\d+ hex=[0-9a-f]+ delivered=[01] ts=\d+|"
+        r"RX[12]|SIM_GATEWAY_ACK \d+|"
+        r"ACK_FRAME ts=\d+ window=\d+ fport=\d+ hex=[0-9a-f]+|"
+        r"DOWNLINK fport=20 rx=accepted count=1 pending=\d+")
+    log=diagnostic.sub("",log)
     match = re.fullmatch(r"\s*" + prefix + r"\s*EVENT "+obj+r"\s*WIND_ALARM_ON\s*RAIN_TIPS=1\s*EVENT "+obj+r"\s*WIND_ALARM_OFF\s*TELEMETRY "+obj+r"\s*", log)
     require(match is not None, "unexpected, duplicate, missing or out-of-order smoke serial event")
     on, off, periodic = (json.loads(match.group(i)) for i in (1,2,3))

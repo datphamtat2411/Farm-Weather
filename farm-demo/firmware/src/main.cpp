@@ -23,7 +23,19 @@ float latestTemperature=0;
 bool ambientReady=false,confirmWasPressed=false;
 farm::AmbientProcessor atmosphere;
 farm::DirectionAccumulator directionPeriod;
-volatile unsigned tips=0,windPulses=0;
+// Bucket contact edges by capture time, not by when slow Flash work finishes.
+constexpr unsigned captureSlots=64;
+volatile unsigned rainBuckets[captureSlots]={},windBuckets[captureSlots]={};
+volatile uint32_t captureOrigin=0;
+volatile bool captureReady=false,captureOverflow=false;
+volatile uint32_t consumedSecond=0;
+void capture(volatile unsigned* buckets){
+    if(!captureReady)return;
+    const uint32_t second=(millis()-captureOrigin)/tick_ms+1;
+    if(second<=consumedSecond||second-consumedSecond>=captureSlots){captureOverflow=true;return;}
+    ++buckets[second%captureSlots];
+}
+uint32_t powerClock(){return millis()*1000u;}
 volatile uint32_t lastTip=0,lastWind=0;
 volatile bool seenTip=false,seenWind=false;
 farm::SimI2c sensorBus(sda,scl);
@@ -46,16 +58,16 @@ constexpr unsigned SIM_VREF_MV=3300;
 
 void rainISR(){
     const uint32_t now=micros();
-    power.wakePulse(now,false);
-    if(farm::acceptPulse(now,lastTip,seenTip,farm::design::rain_debounce_ms*1000/acceleration)){
-        ++tips;lastTip=now;seenTip=true;
+    if(captureReady)power.wakePulse(powerClock(),false);
+    if((!seenTip||int32_t(now-lastTip)>=0)&&farm::acceptPulse(now,lastTip,seenTip,farm::design::rain_debounce_ms*1000/acceleration)){
+        capture(rainBuckets);lastTip=now;seenTip=true;
     }
 }
 void windISR(){
     const uint32_t now=micros();
-    power.wakePulse(now,true);
-    if(farm::acceptPulse(now,lastWind,seenWind,farm::design::wind_debounce_ms*1000/acceleration)){
-        ++windPulses;lastWind=now;seenWind=true;
+    if(captureReady)power.wakePulse(powerClock(),true);
+    if((!seenWind||int32_t(now-lastWind)>=0)&&farm::acceptPulse(now,lastWind,seenWind,farm::design::wind_debounce_ms*1000/acceleration)){
+        capture(windBuckets);lastWind=now;seenWind=true;
     }
 }
 unsigned readMedian(uint32_t pin){
@@ -227,11 +239,26 @@ void readCommands(){
         else commandOverflow=true;
     }
 }
+char queuedScenario[160]={};
+void readScenario(){
+    if(!digitalRead(PB11))return;
+    char input[160]={};
+    if(!flash.scenarioCommand(input,sizeof(input))||input[sizeof(input)-1]){
+        WeatherSerial.println("HARDWARE_ERROR SCENARIO_MAILBOX");return;
+    }
+    if(!strncmp(input,"DOWNLINK ",9)){
+        if(queuedScenario[0]){WeatherSerial.println("HARDWARE_ERROR SCENARIO_OVERFLOW");return;}
+        memcpy(queuedScenario,input,sizeof(input));
+        WeatherSerial.println("SCENARIO_DOWNLINK_QUEUED");
+    }else{memcpy(commandLine,input,sizeof(input));handleCommand();commandSize=0;}
+}
 void serviceRadio(){
     const unsigned rx=radio.window(station.seconds);
     if(rx){
         WeatherSerial.print("RX");WeatherSerial.println(rx);
-        if(rx==1&&linkUp&&autoAck&&mockCommitted&&!dropAck){
+        if(rx==1&&linkUp&&queuedScenario[0]){
+            memcpy(commandLine,queuedScenario,sizeof(commandLine));queuedScenario[0]=0;handleCommand();commandSize=0;
+        }else if(rx==1&&linkUp&&autoAck&&mockCommitted&&!dropAck){
             farm::wire::Payload ack;ack.field(1,mockCommitted);
             WeatherSerial.print("SIM_GATEWAY_ACK ");WeatherSerial.println(mockCommitted);
             applyAck(farm::wire::ACK_PORT,ack);mockCommitted=0;
@@ -305,7 +332,7 @@ void emitTelemetry(){
     s.print(",\"direction_samples\":");s.print(directionSamples);
     s.print(",\"battery_samples\":");s.print(batterySamples);
     // Copy atomically: counters and 64-bit accumulators are shared with EXTI.
-    noInterrupts();power.account(micros());const auto stats=power;interrupts();
+    noInterrupts();power.account(powerClock());const auto stats=power;interrupts();
     s.print(",\"sim_active_us\":");printUint64(stats.active_us);
     s.print(",\"sim_sleep_us\":");printUint64(stats.sleep_us);
     s.print(",\"sleep_entries\":");s.print(stats.sleep_entries);
@@ -385,13 +412,13 @@ void setup(){
     const auto& config=controller.snapshot();station.configure(config.on,config.off,config.period);
     WeatherSerial.print("FLASH_READY highwater=");WeatherSerial.print(ring.highwater);
     WeatherSerial.print(" pending=");WeatherSerial.print(ring.count);WeatherSerial.print(" corrupt=");WeatherSerial.println(ring.corrupt);
-    power.begin(micros());
+    pinMode(PB11,INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
     WeatherSerial.println("BOOT FARM_WS_01");
     ambientReady=ambient.begin();
     WeatherSerial.println(ambientReady?"BME280_I2C_READY":"BME280_INIT_FAILED");
-    noInterrupts();tips=0;windPulses=0;interrupts();
+
     readAmbient();sampleDirection();
     // The simulator's independent clock continues across MCU reset. A fresh
     // simulation has a fresh NOR image and a new clock anchor.
@@ -399,19 +426,26 @@ void setup(){
     WeatherSerial.print("SIM_RTC offset=");WeatherSerial.print(clockOffset);
     WeatherSerial.print(" trusted=");WeatherSerial.println(clockTrusted?1:0);
     if(!clockTrusted)WeatherSerial.println("HARDWARE_ERROR CLOCK_INVALID");
-    nextTick=millis()+TICK_MS;
+    noInterrupts();captureOrigin=millis();power.begin(captureOrigin*1000u);captureReady=true;
+    nextTick=captureOrigin+TICK_MS;interrupts();
     WeatherSerial.println("READY FARM_WS_01 SIMULATION");
 }
 void loop(){
-    readCommands();
+    readCommands();readScenario();
     if((int32_t)(millis()-nextTick)<0){
         // Logical Stop 2: no peripheral tasks due, no transactions in flight.
         // Do NOT execute physical Stop 2 on Wokwi F103; SysTick/EXTI stay live.
-        noInterrupts();power.sleep(micros());interrupts();
+        noInterrupts();power.sleep(powerClock());interrupts();
+        __WFI();
         return;
     }
     nextTick+=TICK_MS;
-    noInterrupts();power.wakeRtc(micros());const unsigned n=tips,pulses=windPulses;tips=0;windPulses=0;interrupts();
+    noInterrupts();power.wakeRtc(powerClock());
+    const unsigned index=(station.seconds+1)%captureSlots;
+    const unsigned n=rainBuckets[index],pulses=windBuckets[index];
+    rainBuckets[index]=0;windBuckets[index]=0;consumedSecond=station.seconds+1;
+    const bool overflow=captureOverflow;interrupts();
+    if(overflow){WeatherSerial.println("HARDWARE_ERROR CAPTURE_OVERFLOW");return;}
     if(n){totalTips+=n;WeatherSerial.print("RAIN_TIPS=");WeatherSerial.println(totalTips);}
     const bool windValid=!digitalRead(wind_fault);
     windHealth.sample(windValid);

@@ -35,7 +35,8 @@ def verify(log):
     pending=set()
     latest=None
     released=[]
-    for line in log.splitlines():
+    # UART messages may coalesce; tokenize the meaningful trace grammar.
+    for line in re.findall(r'BUFFER_STORED \d+ pending=\d+|RADIO_TX seq=\d+ fcnt=\d+ fport=\d+ hex=[0-9a-f]+ delivered=[01] ts=\d+|ACK_FRAME ts=\d+ window=\d+ fport=\d+ hex=[0-9a-f]+|DOWNLINK fport=20 rx=accepted count=1 pending=\d+',log):
         m=re.search(r"BUFFER_STORED (\d+) pending=(\d+)",line)
         if m:
             pending.add(int(m[1]))

@@ -26,7 +26,7 @@ steps:
       part-id: battery
       name: position
       value: 0.505
-  - delay: 500ms
+  - delay: 200ms
   - expect-pin:
       part-id: mcu
       name: B8
@@ -40,7 +40,7 @@ steps:
       name: frequency
       value: 27
   - wait-serial: 'WIND_ALARM_ON'
-  - delay: 30ms
+  - delay: 12ms
   - expect-pin:
       part-id: mcu
       name: B8
@@ -54,7 +54,7 @@ steps:
       name: pressed
       value: 1
   - wait-serial: 'RAIN_TIPS=1'
-  - delay: 150ms
+  - delay: 60ms
   - set-control:
       part-id: rain
       name: pressed
@@ -64,7 +64,7 @@ steps:
       name: frequency
       value: 3
   - wait-serial: 'WIND_ALARM_OFF'
-  - delay: 150ms
+  - delay: 60ms
   - expect-pin:
       part-id: mcu
       name: B8
@@ -74,4 +74,4 @@ steps:
       name: B9
       value: 0
   - wait-serial: 'TELEMETRY'
-  - delay: 200ms
+  - delay: 600ms

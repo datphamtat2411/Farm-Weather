@@ -18,7 +18,7 @@ def verify(log):
         t=r["ts_s"]-1795453200
         req(r["rtc_wakes"]==t and r["ambient_samples"]==1+t//60 and r["direction_samples"]==1+t//5 and r["battery_samples"]==t//300,"sampling cadence changed")
         req(r["sim_sleep_us"]>r["sim_active_us"]>0 and r["pulse_wakes"]>0 and r["sleep_entries"]>=t,"no logical sleep/wake activity")
-        req(abs(r["sim_sleep_us"]+r["sim_active_us"]-t*100000)<500000,"sleep/active accounting gap")
+        req(abs(r["sim_sleep_us"]+r["sim_active_us"]-t*40000)<500000,"sleep/active accounting gap")
         req(r["valid_mask"]==127,"invalid sensor in power scenario")
     req(all(r["battery_voltage"]<=3 for r in rows[:3]) and all(r["battery_voltage"]>=3.2 for r in rows[3:]),"wrong battery inputs")
     req(math.isclose(rows[3]["rainfall"],0.2794,abs_tol=1e-5) and rows[3]["wind_gust"]>=10 and rows[3]["wind_speed"]>0,"lost measurements in 900s window")
