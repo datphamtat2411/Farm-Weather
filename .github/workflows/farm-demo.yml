@@ -34,6 +34,8 @@ jobs:
           /tmp/weather-test | tee farm-demo/evidence/native.log
           g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/acquisition_test.cpp -o /tmp/acquisition-test
           /tmp/acquisition-test | tee farm-demo/evidence/acquisition-native.log
+          g++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all -I farm-demo/firmware/include farm-demo/tests/alarm_test.cpp -o /tmp/alarm-test
+          /tmp/alarm-test | tee farm-demo/evidence/alarm-native.log
           python -m unittest discover -s farm-demo/tests -v 2>&1 | tee farm-demo/evidence/python-tests.log
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
@@ -144,6 +146,14 @@ jobs:
           wokwi-cli . --scenario scenarios/invalid-ambient.yaml --fail-text HARDWARE_ERROR --timeout 60000 --serial-log-file ../evidence/invalid-ambient.log 2>&1 | tee ../evidence/invalid-ambient-wokwi.log
       - name: Assert real Wokwi invalid sensor is flagged and omitted
         run: python farm-demo/tests/verify_invalid_ambient.py farm-demo/evidence/invalid-ambient.log | tee farm-demo/evidence/invalid-ambient.json
+      - name: Wokwi local alarm and fault recovery
+        working-directory: farm-demo/firmware
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: |
+          wokwi-cli . --scenario scenarios/local-alarms.yaml --fail-text HARDWARE_ERROR --timeout 120000 --serial-log-file ../evidence/local-alarms.log 2>&1 | tee ../evidence/local-alarms-wokwi.log
+      - name: Verify local alarm transitions
+        run: python farm-demo/tests/verify_alarms.py farm-demo/evidence/local-alarms.log | tee farm-demo/evidence/local-alarms.json
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:

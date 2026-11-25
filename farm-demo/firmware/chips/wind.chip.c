@@ -6,11 +6,13 @@
 // Physical falling edges, not synthetic counts injected into firmware.
 // Logical time runs 10x faster: 100 ms simulator = 1 logical second.
 // A 1 ms timer emits low pulses using a phase accumulator (0..300 Hz virtual).
-typedef struct {pin_t out;uint32_t frequency,phase;bool low;} state_t;
+typedef struct {pin_t out,fault_pin;uint32_t frequency,fault,phase;bool low;} state_t;
 static void tick(void *data) {
   state_t *s=data;
   if(s->low){pin_write(s->out,1);s->low=false;}
-  uint32_t hz=attr_read(s->frequency);
+  bool fault=attr_read(s->fault)!=0;
+  pin_write(s->fault_pin,fault?1:0);
+  uint32_t hz=fault?0:attr_read(s->frequency);
   if(hz>30) hz=30;
   if(!hz){s->phase=0;return;}
   s->phase+=hz*10;
@@ -22,6 +24,8 @@ void chip_init(void) {
   state_t *s=calloc(1,sizeof(*s));
   s->frequency=attr_init("frequency",6);
   s->out=pin_init("PULSE",OUTPUT_HIGH);
+  s->fault=attr_init("fault",0);
+  s->fault_pin=pin_init("FAULT",OUTPUT_LOW);
   timer_config_t cfg={.callback=tick,.user_data=s};
   timer_t timer=timer_init(&cfg);
   timer_start(timer,1000,true);

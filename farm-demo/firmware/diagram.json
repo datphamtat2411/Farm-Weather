@@ -96,6 +96,17 @@
       "attrs": {
         "frequency": "6"
       }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "confirm",
+      "top": 270,
+      "left": 200,
+      "attrs": {
+        "color": "green",
+        "label": "Inspection acknowledged",
+        "bounce": "0"
+      }
     }
   ],
   "connections": [
@@ -235,6 +246,24 @@
       "wind:PULSE",
       "mcu:B0",
       "green",
+      []
+    ],
+    [
+      "confirm:1.l",
+      "mcu:B12",
+      "green",
+      []
+    ],
+    [
+      "confirm:2.l",
+      "mcu:GND.1",
+      "black",
+      []
+    ],
+    [
+      "wind:FAULT",
+      "mcu:B10",
+      "orange",
       []
     ]
   ]

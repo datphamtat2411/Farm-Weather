@@ -12,7 +12,7 @@ def main(path):
     if len(records)!=1:
         raise ValueError(f"expected one invalid-ambient record, got {len(records)}")
     r=json.loads(records[0])
-    if r.get("device_id")!="FARM_WS_01" or r.get("sequence_number")!=1:
+    if r.get("device_id")!="FARM_WS_01" or r.get("sequence_number")!=2:
         raise ValueError("wrong station/record")
     if r.get("ts_s")!=1795453500 or r.get("period_s")!=300:
         raise ValueError("wrong measurement timestamp/period")

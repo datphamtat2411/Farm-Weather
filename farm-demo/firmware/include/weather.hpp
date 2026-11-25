@@ -12,20 +12,56 @@ inline double windSpeed(unsigned pulses, unsigned seconds) {
 inline bool acceptPulse(uint32_t now, uint32_t previous, bool seen, uint32_t debounce) {
     return !seen || uint32_t(now - previous) >= debounce;
 }
+// Health for scheduled non-ambient reads; absence of dry-contact pulses alone
+// is not a fault. Only explicit invalid measurements count.
+struct ReadHealth {
+    unsigned bad=0,good=0;
+    bool fault=false;
+    void sample(bool valid) {
+        if(valid){bad=0;if(good<design::confirmation_count)++good;
+            if(good>=design::confirmation_count)fault=false;}
+        else {good=0;if(bad<design::confirmation_count)++bad;
+            if(bad>=design::confirmation_count)fault=true;}
+    }
+};
+enum class LocalMode { Normal, Alarm, AwaitInspection };
+struct LocalActuation {
+    LocalMode mode=LocalMode::Normal;
+    uint32_t alarmStarted=0;
+    bool buzzer=false,stopRequest=false;
+    // Nonblocking two seconds on / one second off, logical time.
+    void update(uint32_t now,unsigned status,bool windReady,bool confirm=false) {
+        if(status&WIND){
+            if(mode!=LocalMode::Alarm)alarmStarted=now;
+            mode=LocalMode::Alarm;
+        } else if(mode==LocalMode::Alarm && windReady) mode=LocalMode::AwaitInspection;
+        if(mode==LocalMode::AwaitInspection && confirm && windReady && !(status&WIND))
+            mode=LocalMode::Normal;
+        stopRequest=mode==LocalMode::Alarm;
+        buzzer=stopRequest && (uint32_t(now-alarmStarted)%3<2);
+    }
+};
 struct Station {
     uint32_t seconds=0;
     unsigned status=0, wind[design::wind_window_s]={}, rain[design::rain_window_s]={};
     unsigned rainWindow=0, rainPeriod=0, windPeriod=0, gust=0, periodElapsed=0;
+    bool windQuality[design::wind_window_s]={},windReady=false,windPeriodValid=true;
+    unsigned currentWindPulses=0;
     unsigned quiet=0, hot=0, cool=0, low=0, charged=0;
     unsigned period=design::normal_period_s;
-    bool tick(unsigned windPulses,unsigned rainTips) {
+    bool tick(unsigned windPulses,unsigned rainTips,bool windValid=true) {
         const unsigned i=seconds%design::rain_window_s;
         rainWindow-=rain[i];rain[i]=rainTips;rainWindow+=rainTips;
-        wind[seconds%design::wind_window_s]=windPulses;
+        wind[seconds%design::wind_window_s]=windValid?windPulses:0;
+        windQuality[seconds%design::wind_window_s]=windValid;
+        windPeriodValid=windPeriodValid&&windValid;
         ++seconds;++periodElapsed;
-        rainPeriod+=rainTips;windPeriod+=windPulses;
+        rainPeriod+=rainTips;if(windValid)windPeriod+=windPulses;
         unsigned sum=wind[0]+wind[1]+wind[2];
-        if(seconds>=design::wind_window_s) {
+        windReady=seconds>=design::wind_window_s && windQuality[0] && windQuality[1] && windQuality[2];
+        currentWindPulses=sum;
+        if(!windReady)quiet=0; // missing data cannot clear an existing warning
+        if(windReady) {
             if(sum>gust)gust=sum;
             if(sum>=design::wind_alarm_pulses){status|=WIND;quiet=0;}
             else if(status&WIND){
@@ -52,6 +88,6 @@ struct Station {
         if(charged>=design::confirmation_count){status&=~BATTERY;period=design::normal_period_s;}
     }
     void batteryInvalid() {low=charged=0;}
-    void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;}
+    void finishPeriod(){rainPeriod=windPeriod=gust=periodElapsed=0;windPeriodValid=true;}
 };
 }

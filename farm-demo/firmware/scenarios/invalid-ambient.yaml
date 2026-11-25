@@ -6,5 +6,13 @@ steps:
       part-id: ambient
       name: temperature
       value: 99
+  - set-control:
+      part-id: direction
+      name: position
+      value: 0.1803
+  - set-control:
+      part-id: battery
+      name: position
+      value: 0.505
   - wait-serial: 'TELEMETRY'
   - delay: 150ms

@@ -10,6 +10,10 @@ using namespace farm::sim;
 
 Uart& WeatherSerial=Serial1;
 farm::Station station;
+farm::LocalActuation actuation;
+farm::ReadHealth windHealth,directionHealth,batteryHealth;
+float latestTemperature=0;
+bool ambientReady=false,confirmWasPressed=false;
 farm::AmbientProcessor atmosphere;
 farm::DirectionAccumulator directionPeriod;
 volatile unsigned tips=0,windPulses=0;
@@ -45,28 +49,32 @@ unsigned readMedian(uint32_t pin){
 }
 void readAmbient(){
     farm::AmbientSample sample={};
-    const bool readOk=ambient.read(sample);
+    if(!ambientReady)ambientReady=ambient.begin();
+    const bool readOk=ambientReady&&ambient.read(sample);
+    if(!readOk)ambientReady=false;
     atmosphere.ingest(sample,readOk);
-    station.sensorFault(atmosphere.fault());
-    if(atmosphere.temperature.valid)station.temperature(sample.temperature);
+    if(atmosphere.temperature.valid){latestTemperature=sample.temperature;station.temperature(sample.temperature);}
     else station.temperatureInvalid();
     if(!readOk)WeatherSerial.println("BME280_SAMPLE_INVALID");
 }
 void sampleDirection(){
     unsigned angle=0;
     directionValid=farm::DirectionLookup::decode(readMedian(direction),angle);
+    directionHealth.sample(directionValid);
     if(directionValid)directionPeriod.add(angle);
 }
 void sampleBattery(){
     unsigned measured=0;
     batteryValid=farm::batteryMillivolts(readMedian(battery),SIM_VREF_MV,measured);
+    batteryHealth.sample(batteryValid);
     if(batteryValid){batteryMv=measured;station.battery(measured);}
     else station.batteryInvalid();
 }
 void emitTelemetry(){
     unsigned angle=0;
-    const bool directionUsable=directionValid && station.windPeriod>0 && directionPeriod.mean(angle);
-    unsigned valid=farm::quality::WIND|farm::quality::RAIN;
+    const bool directionUsable=directionValid && station.windPeriodValid && station.windPeriod>0 && directionPeriod.mean(angle);
+    unsigned valid=farm::quality::RAIN;
+    if(station.windPeriodValid)valid|=farm::quality::WIND;
     valid|=atmosphere.mask();
     if(directionUsable)valid|=farm::quality::DIRECTION;
     if(batteryValid)valid|=farm::quality::BATTERY;
@@ -85,10 +93,12 @@ void emitTelemetry(){
     if(valid&farm::quality::PRESSURE){
         s.print(",\"pressure\":");s.print(atmosphere.pressure.filtered,1);
     }
-    s.print(",\"wind_speed\":");
-    s.print(farm::windSpeed(station.windPeriod,station.periodElapsed),2);
-    s.print(",\"wind_gust\":");
-    s.print(farm::windSpeed(station.gust,farm::design::wind_window_s),2);
+    if(valid&farm::quality::WIND){
+        s.print(",\"wind_speed\":");
+        s.print(farm::windSpeed(station.windPeriod,station.periodElapsed),2);
+        s.print(",\"wind_gust\":");
+        s.print(farm::windSpeed(station.gust,farm::design::wind_window_s),2);
+    }
     if(directionUsable){s.print(",\"wind_direction\":");s.print(angle);}
     s.print(",\"rainfall\":");s.print(farm::rainfall(station.rainPeriod),4);
     if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
@@ -97,21 +107,52 @@ void emitTelemetry(){
     directionPeriod.reset();
     station.finishPeriod();
 }
+unsigned faultMask(){
+    using namespace farm::quality;
+    return (atmosphere.temperature.fault?TEMPERATURE:0u)|
+           (atmosphere.humidity.fault?HUMIDITY:0u)|
+           (atmosphere.pressure.fault?PRESSURE:0u)|
+           (windHealth.fault?WIND:0u)|(directionHealth.fault?DIRECTION:0u)|
+           (batteryHealth.fault?BATTERY:0u);
+}
+const char* modeName(){
+    switch(actuation.mode){
+        case farm::LocalMode::Alarm:return "ALARM";
+        case farm::LocalMode::AwaitInspection:return "AWAIT_INSPECTION";
+        default:return "NORMAL";
+    }
+}
+void emitEvent(unsigned changed){
+    // One snapshot per logical second, including simultaneous transitions.
+    // Shared sequence namespace with periodic records; no periodic rain increment.
+    auto& s=WeatherSerial;
+    s.print("EVENT {\"device_id\":\"FARM_WS_01\",\"kind\":\"event\",\"sequence_number\":");s.print(++sequence);
+    s.print(",\"ts_s\":");s.print(EPOCH+station.seconds);
+    s.print(",\"changed_mask\":");s.print(changed);
+    s.print(",\"status\":");s.print(station.status);
+    s.print(",\"fault_mask\":");s.print(faultMask());
+    s.print(",\"mode\":\"");s.print(modeName());s.print("\"");
+    s.print(",\"buzzer\":");s.print(actuation.buzzer?"true":"false");
+    s.print(",\"stop_request\":");s.print(actuation.stopRequest?"true":"false");
+    if(station.windReady){s.print(",\"wind_window_mps\":");s.print(farm::windSpeed(station.currentWindPulses,3),2);}
+    s.print(",\"rain_10min_mm\":");s.print(farm::rainfall(station.rainWindow),4);
+    if(atmosphere.temperature.valid){s.print(",\"temperature\":");s.print(latestTemperature,1);}
+    if(batteryValid){s.print(",\"battery_voltage\":");s.print(batteryMv/1000.0,3);}
+    s.println("}");
+}
 void setup(){
     WeatherSerial.setRx(uart_rx);WeatherSerial.setTx(uart_tx);
     WeatherSerial.begin(115200);
     analogReadResolution(12);
     pinMode(rain,INPUT_PULLUP);pinMode(wind,INPUT_PULLUP);
+    pinMode(wind_fault,INPUT_PULLDOWN);pinMode(confirm_button,INPUT_PULLUP);
     pinMode(buzzer,OUTPUT);pinMode(relay,OUTPUT);
     digitalWrite(buzzer,LOW);digitalWrite(relay,LOW);
     attachInterrupt(digitalPinToInterrupt(rain),rainISR,FALLING);
     attachInterrupt(digitalPinToInterrupt(wind),windISR,FALLING);
     WeatherSerial.println("BOOT FARM_WS_01");
-    if(!ambient.begin()){
-        WeatherSerial.println("HARDWARE_ERROR BME280_INIT");
-        for(;;)delay(1000);
-    }
-    WeatherSerial.println("BME280_I2C_READY");
+    ambientReady=ambient.begin();
+    WeatherSerial.println(ambientReady?"BME280_I2C_READY":"BME280_INIT_FAILED");
     noInterrupts();tips=0;windPulses=0;interrupts();
     readAmbient();sampleDirection();
     nextTick=millis()+TICK_MS;
@@ -122,14 +163,23 @@ void loop(){
     nextTick+=TICK_MS;
     noInterrupts();const unsigned n=tips,pulses=windPulses;tips=0;windPulses=0;interrupts();
     if(n){totalTips+=n;WeatherSerial.print("RAIN_TIPS=");WeatherSerial.println(totalTips);}
-    const bool due=station.tick(pulses,n);
+    const bool windValid=!digitalRead(wind_fault);
+    windHealth.sample(windValid);
+    const bool due=station.tick(pulses,n,windValid);
     if(station.seconds%farm::design::ambient_period_s==0)readAmbient();
     if(station.seconds%farm::design::direction_period_s==0)sampleDirection();
     if(station.seconds%farm::design::normal_period_s==0)sampleBattery();
-    if((station.status^prevStatus)&farm::WIND)
+    station.sensorFault(faultMask()!=0);
+    const bool pressed=!digitalRead(confirm_button);
+    const auto before=actuation.mode;
+    actuation.update(station.seconds,station.status,station.windReady,pressed&&!confirmWasPressed);
+    confirmWasPressed=pressed;
+    digitalWrite(buzzer,actuation.buzzer?HIGH:LOW);
+    digitalWrite(relay,actuation.stopRequest?HIGH:LOW);
+    const unsigned changed=station.status^prevStatus;
+    if(changed || before!=actuation.mode)emitEvent(changed);
+    if(changed&farm::WIND)
         WeatherSerial.println(station.status&farm::WIND?"WIND_ALARM_ON":"WIND_ALARM_OFF");
     prevStatus=station.status;
-    digitalWrite(buzzer,(station.status&farm::WIND)?HIGH:LOW);
-    digitalWrite(relay,(station.status&farm::WIND)?HIGH:LOW);
     if(due)emitTelemetry();
 }

@@ -7,11 +7,13 @@ from verify_smoke import verify
 
 class SmokeVerifierTest(unittest.TestCase):
     def fixture(self):
-        r = dict(device_id="FARM_WS_01", sequence_number=1, period_s=300,
+        r = dict(device_id="FARM_WS_01", sequence_number=3, period_s=300,
                  ts_s=1795453500, valid_mask=127, status=0, rainfall=0.2794,
                  wind_gust=12.0, wind_speed=4.0, temperature=25,
                  humidity=70, pressure=1000, battery_voltage=3.2, wind_direction=135)
-        return "BOOT FARM_WS_01\nBME280_I2C_READY\nREADY FARM_WS_01 SIMULATION\nWIND_ALARM_ON\nRAIN_TIPS=1\nWIND_ALARM_OFF\nTELEMETRY " + json.dumps(r) + "\n"
+        on = dict(device_id="FARM_WS_01",kind="event",sequence_number=1,ts_s=1795453205,changed_mask=1,status=1,mode="ALARM",buzzer=True,stop_request=True,wind_window_mps=10)
+        off = dict(on,sequence_number=2,ts_s=1795453268,status=0,mode="AWAIT_INSPECTION",buzzer=False,stop_request=False,wind_window_mps=6)
+        return "BOOT FARM_WS_01\nBME280_I2C_READY\nREADY FARM_WS_01 SIMULATION\nEVENT "+json.dumps(on)+"\nWIND_ALARM_ON\nRAIN_TIPS=1\nEVENT "+json.dumps(off)+"\nWIND_ALARM_OFF\nTELEMETRY " + json.dumps(r) + "\n"
 
     def test_accept_valid_fixture(self):
         with tempfile.TemporaryDirectory() as tmp:

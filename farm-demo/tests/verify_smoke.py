@@ -18,17 +18,27 @@ def verify(log_path, db_path):
     # Wokwi 0.29.1 may coalesce adjacent println messages in the saved serial
     # stream. Parse the complete ordered smoke grammar, not individual lines
     # or permissive substrings. Only whitespace is optional between tokens.
-    prefix = r"\s*".join(re.escape(marker) for marker in markers[:-1])
-    match = re.fullmatch(r"\s*" + prefix + r"\s*TELEMETRY (\{[^\r\n]*\})\s*", log)
+    obj = r"(\{[^{}\r\n]*\})"
+    prefix = r"\s*".join(re.escape(marker) for marker in markers[:3])
+    match = re.fullmatch(r"\s*" + prefix + r"\s*EVENT "+obj+r"\s*WIND_ALARM_ON\s*RAIN_TIPS=1\s*EVENT "+obj+r"\s*WIND_ALARM_OFF\s*TELEMETRY "+obj+r"\s*", log)
     require(match is not None, "unexpected, duplicate, missing or out-of-order smoke serial event")
-    records = [json.loads(match.group(1))]
+    on, off, periodic = (json.loads(match.group(i)) for i in (1,2,3))
+    for e, seq, status, mode in ((on,1,1,"ALARM"),(off,2,0,"AWAIT_INSPECTION")):
+        require(e["device_id"]=="FARM_WS_01" and e["kind"]=="event" and
+                type(e["sequence_number"]) is int and e["sequence_number"]==seq and
+                e["changed_mask"]==1 and e["status"]==status and e["mode"]==mode and
+                e["buzzer"] is bool(status) and e["stop_request"] is bool(status),
+                "invalid wind event")
+    require(on["wind_window_mps"]>=10 and off["wind_window_mps"]<7 and
+            off["ts_s"]-on["ts_s"]>=60, "wrong wind transition conditions")
+    records = [periodic]
     require(len(records) == 1, f"expected one complete periodic record, got {len(records)}")
     r = records[0]
     require(type(r["sequence_number"]) is int and type(r["period_s"]) is int
             and type(r["ts_s"]) is int and type(r["valid_mask"]) is int and type(r["status"]) is int,
             "integer telemetry metadata required")
     require(r["device_id"] == "FARM_WS_01", "unexpected station")
-    require(r["sequence_number"] == 1 and r["period_s"] == 300, "wrong first record sequence or period")
+    require(r["sequence_number"] == 3 and r["period_s"] == 300, "wrong first record sequence or period")
     require(r["ts_s"] == 1795453500, "wrong simulated measurement timestamp")
     require(r["valid_mask"] == 127, "unexpected validity mask")
     require(r["status"] == 0, "unexpected alarm status after recovery")
@@ -51,13 +61,13 @@ def verify(log_path, db_path):
     try:
         ingest_log(db, log_path)
         rows = db.execute("SELECT device_id, sequence_number, ts_ms, state FROM weather_outbox").fetchall()
-        require(rows == [("FARM_WS_01", 1, r["ts_s"] * 1000, "PENDING")],
+        require(rows == [("FARM_WS_01", 3, r["ts_s"] * 1000, "PENDING")],
                 "SQLite restart/replay verification failed")
     finally:
         db.close()
     return {"result": "PASS", "scope": "foundation smoke only", "simulated": True,
             "record_count": len(records), "unique_sqlite_records_after_replay": len(rows),
-            "serial_markers": list(markers), "telemetry": r}
+            "serial_markers": list(markers), "telemetry": r, "events": [on,off]}
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
