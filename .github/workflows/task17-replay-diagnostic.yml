@@ -1,0 +1,74 @@
+name: Task 17 replay diagnostic (zero Wokwi quota)
+on:
+  push:
+    branches: ['demo/task17-replay-diagnostic']
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  replay:
+    name: Diagnostic replay of prior genuine passing Wokwi link trace (not candidate acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      FARM_TB_ADMIN_USER: tenant@thingsboard.org
+      FARM_TB_ADMIN_PASSWORD: tenant
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: '712e7b67c984ca7f01da0579bdc8519eeeb999d9'
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Prepare isolated TLS and PostgreSQL credentials
+        run: |
+          mkdir -p farm-demo/evidence
+          git rev-parse HEAD > farm-demo/evidence/commit.txt
+          bash farm-demo/cloud/ci-tls.sh "$RUNNER_TEMP/farm-tls"
+          echo "FARM_TLS_DIR=$RUNNER_TEMP/farm-tls" >> "$GITHUB_ENV"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "FARM_DB_PASSWORD=$password" >> "$GITHUB_ENV"
+          admin_password="Aa1!$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_password"
+          echo "FARM_CI_SYSADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
+          python -m pip install -r farm-demo/edge/requirements.txt
+          python -m grpc_tools.protoc -I farm-demo/protocol --python_out=farm-demo/edge farm-demo/protocol/weather.proto
+      - name: Install actual ThingsBoard (non-production)
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml pull
+          docker compose -f farm-demo/cloud/compose.yml run --rm -e INSTALL_TB=true thingsboard
+          docker compose -f farm-demo/cloud/compose.yml up -d
+      - name: Install pinned Chromium browser test runner
+        run: |
+          python -m pip install playwright==1.51.0
+          python -m playwright install --with-deps chromium
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45630932534
+          pattern: simulation-link-recovery-attempt-*
+          path: ${{ runner.temp }}/task17-input
+      - name: Replay actual recovered Wokwi uplinks through Edge and native ThingsBoard UI
+        run: |
+          python farm-demo/tests/verify_task17_replay.py --artifacts "$RUNNER_TEMP/task17-input" --output farm-demo/evidence --ca "$FARM_TLS_DIR/ca.crt" --sha '712e7b67c984ca7f01da0579bdc8519eeeb999d9' > farm-demo/evidence/task17-replay.json
+      - name: Replay failure diagnostics
+        if: failure()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml logs --no-color --tail 250 thingsboard | grep -E "ERROR|WARN|Exception|failed" | sed -E 's/(Bearer |token=|password=)[^ ]+/\1[REDACTED]/Ig' || true
+      - name: Stop isolated services
+        if: always()
+        run: |
+          docker compose -f farm-demo/cloud/compose.yml down -v
+          rm -rf "$RUNNER_TEMP/farm-tls"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: diagnostic-replay-not-acceptance-attempt-${{ github.run_attempt }}
+          path: farm-demo/evidence/
+          retention-days: 30
+          if-no-files-found: error
