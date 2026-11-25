@@ -1,7 +1,7 @@
 name: Farm weather development CI
 on:
   push:
-    branches: ['demo/farm-weather', 'demo/farm-weather/**']
+    branches: ['demo/farm-weather', 'demo/farm-weather/**', 'demo/task17-fix']
   workflow_dispatch:
   workflow_call:
     outputs:

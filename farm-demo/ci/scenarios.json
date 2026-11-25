@@ -1,7 +1,7 @@
 [
   {
     "id": "weather",
-    "timeout_ms": 60000,
+    "timeout_ms": 90000,
     "serial": "serial.log",
     "console": "wokwi.log",
     "checks": [
@@ -24,7 +24,7 @@
   },
   {
     "id": "invalid-ambient",
-    "timeout_ms": 60000,
+    "timeout_ms": 90000,
     "serial": "invalid-ambient.log",
     "console": "invalid-ambient-wokwi.log",
     "checks": [
@@ -39,7 +39,7 @@
   },
   {
     "id": "local-alarms",
-    "timeout_ms": 120000,
+    "timeout_ms": 90000,
     "serial": "local-alarms.log",
     "console": "local-alarms-wokwi.log",
     "checks": [
@@ -54,7 +54,7 @@
   },
   {
     "id": "power",
-    "timeout_ms": 300000,
+    "timeout_ms": 150000,
     "serial": "power.log",
     "console": "power-wokwi.log",
     "checks": [
@@ -69,7 +69,7 @@
   },
   {
     "id": "link-recovery",
-    "timeout_ms": 120000,
+    "timeout_ms": 90000,
     "serial": "link-recovery.log",
     "console": "link-recovery-wokwi.log",
     "checks": [
@@ -84,7 +84,7 @@
   },
   {
     "id": "remote-control",
-    "timeout_ms": 120000,
+    "timeout_ms": 90000,
     "serial": "remote-control.log",
     "console": "remote-control-wokwi.log",
     "checks": [

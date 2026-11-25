@@ -30,3 +30,7 @@ GitHub Actions là môi trường tích hợp tạm thời và dừng services s
 4. Truy cập dashboard bằng tài khoản operator/viewer được cấp. Kiểm tra HTTPS, telemetry, quyền đọc và lịch sử. Chỉ dùng môi trường cô lập để mô phỏng lỗi. Sao lưu dữ liệu và dừng dịch vụ khi kết thúc trình bày.
 
 Việc cấp máy chủ, domain, giấy phép và kiểm thử truy cập public là điều kiện vận hành ngoài CI; chưa được xác nhận chỉ từ trạng thái gate. Không merge master hoặc công bố release nếu chưa có evidence cùng SHA.
+
+## Corrections after first acceptance
+
+Wokwi sessions have a five-minute wall-time limit. The adapter uses a 25x logical clock (40 ms per logical second), time-bucketed GPIO edges, a non-regressing millisecond power counter, open-drain I²C and a blank-check operation on actual simulated NOR bytes. The NOR model exposes a scenario gateway mailbox for deterministic external link/ACK and canonical RPC frame input; existing UART remains for manual use. The mailbox injects inputs only, no outcome. All business windows and counters remain unchanged. Native regression tests and every Wokwi scenario remain required.

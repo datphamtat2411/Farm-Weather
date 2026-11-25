@@ -58,6 +58,7 @@ def verify(log):
             req(len(pending)==int(m[1]),"wrong ACK depth")
     req(not pending and set(stored)<=set(released),"queue not drained")
     req(any(sum(t[0]==str(seq) for t in tx)>1 for seq in stored),"no retry")
+    req(any(sum(t[0]==str(seq) and t[4]=="1" for t in tx)>1 for seq in stored),"no delivered retry after ACK loss")
     return dict(result="PASS",scope="Wokwi logical Class A and simulated gateway ACK, not RF/SQLite",offline_sequences=stored,transmissions=len(tx),recovered=sorted(delivered))
 if __name__=="__main__":
     print(json.dumps(verify(Path(sys.argv[1]).read_text()),indent=2))

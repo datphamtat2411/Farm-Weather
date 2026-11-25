@@ -40,7 +40,13 @@ steps:
       value: 3
   - wait-serial: 'LINK_UP'
   - wait-serial: 'delivered=1'
-  - delay: 1200ms
+  # Observe repeated delivered transmissions before allowing ACKs.
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
+  - wait-serial: 'RADIO_TX'
+  - wait-serial: 'delivered=1'
   - set-control:
       part-id: flash
       name: scenario_command

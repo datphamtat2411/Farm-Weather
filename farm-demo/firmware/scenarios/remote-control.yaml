@@ -76,6 +76,7 @@ steps:
       value: 4
   - wait-serial: 'ACK_AUTO'
   - wait-serial: 'RADIO_TX seq=6 fcnt=6 fport=22'
+  - wait-serial: 'DOWNLINK fport=20 rx=accepted count=1 pending=0'
   - expect-pin:
       part-id: mcu
       name: B9
@@ -93,3 +94,4 @@ steps:
       part-id: mcu
       name: B9
       value: 0
+  - delay: 600ms

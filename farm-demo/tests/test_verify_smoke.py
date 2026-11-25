@@ -29,6 +29,21 @@ class SmokeVerifierTest(unittest.TestCase):
             log.write_text(self.fixture().replace("\n", "").strip() + "\r\n", encoding="utf-8")
             self.assertEqual(verify(log, str(Path(tmp) / "test.sqlite"))["result"], "PASS")
 
+    def test_accept_current_radio_diagnostics(self):
+        trace=self.fixture().replace("BOOT FARM_WS_01","FLASH_READY highwater=0 pending=0 corrupt=0\nBOOT FARM_WS_01").replace(
+            "READY FARM_WS_01 SIMULATION","SIM_RTC offset=0 trusted=1\nREADY FARM_WS_01 SIMULATION").replace(
+            "WIND_ALARM_ON","BUFFER_STORED 1 pending=1 used=1\nWIND_ALARM_ON\nRADIO_TX seq=1 fcnt=1 fport=11 hex=0801 delivered=1 ts=5\nRX1\nSIM_GATEWAY_ACK 1\nACK_FRAME ts=6 window=1 fport=20 hex=0801\nDOWNLINK fport=20 rx=accepted count=1 pending=0")
+        for text in (trace,trace.replace("\n","")):
+            with tempfile.TemporaryDirectory() as tmp:
+                log=Path(tmp)/"serial.log"
+                log.write_text(text)
+                self.assertEqual(verify(log,str(Path(tmp)/"test.sqlite"))["result"],"PASS")
+        with tempfile.TemporaryDirectory() as tmp:
+            log=Path(tmp)/"serial.log"
+            log.write_text(trace+"HARDWARE_ERROR FLASH_ACK")
+            with self.assertRaises(ValueError):
+                verify(log,str(Path(tmp)/"test.sqlite"))
+
     def test_reject_missing_event_or_wrong_data(self):
         cases = (self.fixture().replace("WIND_ALARM_OFF\n", ""),
                  self.fixture().replace("0.2794", "0.0"),
